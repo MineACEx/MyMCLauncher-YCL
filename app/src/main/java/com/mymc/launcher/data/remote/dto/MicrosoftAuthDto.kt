@@ -55,9 +55,7 @@ data class TokenResponse(
     @SerializedName("token_type")
     val tokenType: String,
     @SerializedName("expires_in")
-    val expiresIn: Int,
-    @SerializedName("refresh_token")
-    val refreshToken: String? = null
+    val expiresIn: Int
 )
 
 // ==================== Xbox Live 认证 ====================

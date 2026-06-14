@@ -237,7 +237,7 @@ class VersionManager private constructor(private val context: Context) {
                         )
                     }
                 } catch (e: Exception) {
-                    LogUtil.warn(TAG, "Library 下载失败: ${lib.asJsonObject.get("name")?.asString ?: "未知"}, 原因: ${e.message}")
+                    LogUtil.warn(TAG, "Library 下载失败: ${lib.name}, 原因: ${e.message}")
                 }
                 completedLibs++
                 val p = 0.22f + 0.30f * (completedLibs.toFloat() / totalLibraries.coerceAtLeast(1).toFloat())
