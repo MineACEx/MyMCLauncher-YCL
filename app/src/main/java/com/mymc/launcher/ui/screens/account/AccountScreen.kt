@@ -36,6 +36,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.domain.model.AccountType
 import com.mymc.launcher.service.account.AccountManager
 import com.mymc.launcher.ui.components.BottomNavBar
+import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -228,6 +230,7 @@ fun AccountScreen(
             BottomNavBar(currentRoute = currentRoute, onNavigate = onNavigate)
         }
     ) { innerPadding ->
+        FadeInContent {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -315,7 +318,7 @@ fun AccountScreen(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFE53935)
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().scaleOnClick()
                 ) {
                     Text("退出登录")
                 }
@@ -329,6 +332,7 @@ fun AccountScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    } // FadeInContent
     }
 }
 
@@ -373,7 +377,7 @@ private fun OfflineLoginCard(
 
             Button(
                 onClick = onLogin,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().scaleOnClick()
             ) {
                 Text("登录")
             }
@@ -413,7 +417,7 @@ private fun MicrosoftLoginCard(
 
             Button(
                 onClick = onLogin,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().scaleOnClick()
             ) {
                 Text("登录")
             }
@@ -513,7 +517,7 @@ private fun LittleSkinLoginCard(
 
             Button(
                 onClick = onLogin,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().scaleOnClick()
             ) {
                 Text("登录")
             }

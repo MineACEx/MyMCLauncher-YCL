@@ -56,7 +56,7 @@ class PreferencesManager private constructor(private val context: Context) {
         const val DEFAULT_THEME_COLOR = "#FF0D47A1"
 
         /** 暗色模式默认值（null = 跟随系统） */
-        const val DARK_MODE_DEFAULT: String? = null
+        val DARK_MODE_DEFAULT: String? = null
 
         /** 默认启用版本隔离 */
         const val DEFAULT_VERSION_ISOLATION = true
@@ -258,9 +258,6 @@ class PreferencesManager private constructor(private val context: Context) {
      * 生成空的 Preferences 对象（用于 catch 块中的默认发射）
      */
     private fun emptyPreferences(): Preferences {
-        return object : Preferences {
-            override fun <T> get(key: Preferences.Key<T>): T? = null
-            override fun asMap(): Map<Preferences.Key<*>, Any> = emptyMap()
-        }
+        return androidx.datastore.preferences.core.emptyPreferences()
     }
 }

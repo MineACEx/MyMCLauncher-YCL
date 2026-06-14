@@ -36,6 +36,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.data.local.PreferencesManager
 import com.mymc.launcher.domain.model.GameVersionType
 import com.mymc.launcher.ui.components.BottomNavBar
+import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.scaleOnClick
 import com.mymc.launcher.service.version.VersionManager
 import com.mymc.launcher.util.FileUtil
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -185,6 +187,7 @@ fun VersionScreen(
             BottomNavBar(currentRoute = currentRoute, onNavigate = onNavigate)
         }
     ) { innerPadding ->
+        FadeInContent {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -254,6 +257,7 @@ fun VersionScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    } // FadeInContent
     }
 }
 
@@ -290,7 +294,8 @@ private fun VersionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .clickable { onClick() }
+            .scaleOnClick(0.96f),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
         ),

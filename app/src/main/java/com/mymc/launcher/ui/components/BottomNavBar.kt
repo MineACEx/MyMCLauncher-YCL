@@ -14,6 +14,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
@@ -72,7 +73,8 @@ fun BottomNavBar(
                     unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                )
+                ),
+                modifier = Modifier.scaleOnClick(0.92f)
             )
         }
     }

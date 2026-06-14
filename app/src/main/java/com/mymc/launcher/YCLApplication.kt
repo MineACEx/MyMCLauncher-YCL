@@ -39,17 +39,14 @@ class YCLApplication : Application(), SingletonImageLoader.Factory {
     // Coil 全局图片加载器（支持网络图片、本地文件、高斯模糊）
     // ============================================================
     override fun newImageLoader(context: PlatformContext): ImageLoader {
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .followRedirects(true)
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
         return ImageLoader.Builder(context)
             .crossfade(true)
-            .apply {
-                okHttpClient {
-                    okhttp3.OkHttpClient.Builder()
-                        .followRedirects(true)
-                        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
-                }
-            }
+            .components { add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(okHttpClient)) }
             .build()
     }
 

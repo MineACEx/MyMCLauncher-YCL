@@ -28,11 +28,18 @@ fun YCLTheme(
     val isDarkMode by themeManager.isDarkMode.collectAsState()
     val themeColor by themeManager.themeColor.collectAsState()
 
+    // 将十六进制字符串转为 Color
+    val primaryColor = try {
+        Color(android.graphics.Color.parseColor(themeColor))
+    } catch (_: Exception) {
+        DeepSeaBlueDark
+    }
+
     // 构建配色方案（null 时跟随系统）
     val colorScheme = if (isDarkMode ?: isSystemInDarkTheme()) {
-        buildDarkColorScheme(themeColor)
+        buildDarkColorScheme(primaryColor)
     } else {
-        buildLightColorScheme(themeColor)
+        buildLightColorScheme(primaryColor)
     }
 
     // 设置系统状态栏颜色

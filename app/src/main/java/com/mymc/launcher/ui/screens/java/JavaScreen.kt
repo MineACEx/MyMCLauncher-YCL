@@ -33,6 +33,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.service.java.JavaManager
+import com.mymc.launcher.ui.components.BottomNavBar
+import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -149,12 +152,13 @@ fun JavaScreen(
 
     Scaffold(
         bottomBar = {
-            com.mymc.launcher.ui.components.BottomNavBar(
+            BottomNavBar(
                 currentRoute = currentRoute,
                 onNavigate = onNavigate
             )
         }
     ) { innerPadding ->
+        FadeInContent {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -205,6 +209,7 @@ fun JavaScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+        } // FadeInContent
     }
 }
 

@@ -96,6 +96,7 @@ fun HomeScreen(
             BottomNavBar(currentRoute = currentRoute, onNavigate = onNavigate)
         }
     ) { innerPadding ->
+        FadeInContent {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -212,6 +213,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+        }
     }
 }
 
@@ -269,9 +271,10 @@ private fun VersionChip(
 ) {
     Card(
         modifier = Modifier
-            .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() },
+        .padding(vertical = 4.dp)
+        .clip(RoundedCornerShape(12.dp))
+        .clickable { onClick() }
+        .scaleOnClick(0.96f),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
         )
@@ -297,8 +300,9 @@ private fun QuickActionCard(
 ) {
     Card(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-        .clickable { onClick() },
+        .clip(RoundedCornerShape(12.dp))
+        .clickable { onClick() }
+        .scaleOnClick(0.96f),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
         ),

@@ -42,13 +42,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.mymc.launcher.data.local.PreferencesManager
 import com.mymc.launcher.ui.theme.PresetThemeColors
 import com.mymc.launcher.service.theme.ThemeManager
 import com.mymc.launcher.ui.components.BottomNavBar
+import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 设置页面 ViewModel。
@@ -82,7 +86,7 @@ class SettingsViewModel : ViewModel() {
 
     init {
         // 从 DataStore 读取版本隔离状态
-        kotlinx.coroutines.MainScope().launch {
+        viewModelScope.launch {
             preferencesManager.versionIsolationFlow.collect { enabled ->
                 _versionIsolationEnabled.value = enabled
             }
@@ -113,7 +117,7 @@ class SettingsViewModel : ViewModel() {
 
     fun toggleVersionIsolation(enabled: Boolean) {
         _versionIsolationEnabled.value = enabled
-        kotlinx.coroutines.MainScope().launch {
+        viewModelScope.launch {
             preferencesManager.setVersionIsolation(enabled)
         }
     }
@@ -151,6 +155,7 @@ fun SettingsScreen(
             BottomNavBar(currentRoute = currentRoute, onNavigate = onNavigate)
         }
     ) { innerPadding ->
+        FadeInContent {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -287,6 +292,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    } // FadeInContent
     }
 }
 

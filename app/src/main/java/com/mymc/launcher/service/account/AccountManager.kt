@@ -228,17 +228,19 @@ class AccountManager private constructor(private val context: Context) {
                 LogUtil.info(TAG, "OAuth 授权码兑换成功，继续 XBL 认证...")
 
                 // 后续流程与 Device Code Flow 相同：XBL → XSTS → Minecraft → Profile
-                val xblToken = authenticateXBL(tokenData.accessToken) ?: return@launch
+                val xblToken = authenticateXbox(tokenData.accessToken) ?: return@launch
                 val (xstsToken, userHash) = authenticateXsts(xblToken) ?: return@launch
                 val mcToken = authenticateMinecraft(xstsToken, userHash) ?: return@launch
-                val profile = getMinecraftProfile(mcToken, "msa") ?: return@launch
+                val profile = getMinecraftProfile(mcToken) ?: return@launch
 
                 val account = AccountInfo(
-                    uuid = profile.id,
+                    id = profile.id,
                     username = profile.name,
+                    uuid = profile.id,
                     accountType = AccountType.MICROSOFT,
                     accessToken = mcToken,
-                    refreshToken = tokenData.refreshToken ?: ""
+                    isLoggedIn = true,
+                    avatarUrl = "https://crafatar.com/avatars/${profile.id}"
                 )
 
                 _currentAccount.value = account

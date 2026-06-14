@@ -35,6 +35,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.data.remote.RetrofitClient
 import com.mymc.launcher.service.version.VersionManager
 import com.mymc.launcher.ui.components.BottomNavBar
+import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -124,15 +126,18 @@ class ResourceViewModel(application: Application) : AndroidViewModel(application
                             facets = """[["versions:$version"],["project_type:mod"]]""",
                             limit = 20
                         )
-                        _resourceList.value = response.hits.map { hit ->
-                            ResourceItem(
-                                id = hit.projectId,
-                                name = hit.title,
-                                description = hit.description,
-                                type = "Mod",
-                                downloads = "${hit.downloads}",
-                                iconUrl = hit.iconUrl ?: ""
-                            )
+                        val body = response.body()
+                        if (body != null) {
+                            _resourceList.value = body.hits.map { hit ->
+                                ResourceItem(
+                                    id = hit.projectId,
+                                    name = hit.title,
+                                    description = hit.description,
+                                    type = "Mod",
+                                    downloads = "${hit.downloads}",
+                                    iconUrl = hit.iconUrl ?: ""
+                                )
+                            }
                         }
                     }
 
@@ -142,15 +147,18 @@ class ResourceViewModel(application: Application) : AndroidViewModel(application
                             facets = """[["versions:$version"],["project_type:modpack"]]""",
                             limit = 20
                         )
-                        _resourceList.value = response.hits.map { hit ->
-                            ResourceItem(
-                                id = hit.projectId,
-                                name = hit.title,
-                                description = hit.description,
-                                type = "整合包",
-                                downloads = "${hit.downloads}",
-                                iconUrl = hit.iconUrl ?: ""
-                            )
+                        val body = response.body()
+                        if (body != null) {
+                            _resourceList.value = body.hits.map { hit ->
+                                ResourceItem(
+                                    id = hit.projectId,
+                                    name = hit.title,
+                                    description = hit.description,
+                                    type = "整合包",
+                                    downloads = "${hit.downloads}",
+                                    iconUrl = hit.iconUrl ?: ""
+                                )
+                            }
                         }
                     }
 
@@ -187,15 +195,18 @@ class ResourceViewModel(application: Application) : AndroidViewModel(application
                             facets = """[["versions:$version"],["categories:world"]]""",
                             limit = 20
                         )
-                        _resourceList.value = response.hits.map { hit ->
-                            ResourceItem(
-                                id = hit.projectId,
-                                name = hit.title,
-                                description = hit.description,
-                                type = "地图",
-                                downloads = "${hit.downloads}",
-                                iconUrl = hit.iconUrl ?: ""
-                            )
+                        val body = response.body()
+                        if (body != null) {
+                            _resourceList.value = body.hits.map { hit ->
+                                ResourceItem(
+                                    id = hit.projectId,
+                                    name = hit.title,
+                                    description = hit.description,
+                                    type = "地图",
+                                    downloads = "${hit.downloads}",
+                                    iconUrl = hit.iconUrl ?: ""
+                                )
+                            }
                         }
                     }
 
@@ -205,15 +216,18 @@ class ResourceViewModel(application: Application) : AndroidViewModel(application
                             facets = """[["versions:$version"]]""",
                             limit = 20
                         )
-                        _resourceList.value = response.hits.map { hit ->
-                            ResourceItem(
-                                id = hit.projectId,
-                                name = hit.title,
-                                description = hit.description,
-                                type = "通用",
-                                downloads = "${hit.downloads}",
-                                iconUrl = hit.iconUrl ?: ""
-                            )
+                        val body = response.body()
+                        if (body != null) {
+                            _resourceList.value = body.hits.map { hit ->
+                                ResourceItem(
+                                    id = hit.projectId,
+                                    name = hit.title,
+                                    description = hit.description,
+                                    type = "通用",
+                                    downloads = "${hit.downloads}",
+                                    iconUrl = hit.iconUrl ?: ""
+                                )
+                            }
                         }
                     }
                 }
@@ -253,6 +267,7 @@ fun ResourceScreen(
             BottomNavBar(currentRoute = currentRoute, onNavigate = onNavigate)
         }
     ) { innerPadding ->
+        FadeInContent {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -312,6 +327,7 @@ fun ResourceScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    } // FadeInContent
     }
 }
 
