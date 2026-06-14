@@ -145,8 +145,9 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
             updateStatus(version, JavaInstallStatus.DOWNLOADING, 0f)
             val versionNum = version.removePrefix("Java ")
             try {
-                val success = javaEnvManager.extractJavaRuntime(versionNum) { progress ->
-                    updateStatus(version, JavaInstallStatus.DOWNLOADING, progress)
+                val success = javaEnvManager.extractJavaRuntime(versionNum) { entryName, completedCount ->
+                    val progress = completedCount.toFloat() / 100f.coerceAtLeast(1f)
+                    updateStatus(version, JavaInstallStatus.DOWNLOADING, progress.coerceIn(0f, 1f))
                     _extractMessage.value = "解压中... ${(progress * 100).toInt()}%"
                 }
                 if (success) {
