@@ -1,0 +1,109 @@
+# ============================================================
+# YCL启动器 — GitHub Actions 云端自动打包工作流
+# 功能：Push/PR 触发 → 编译 → 签名 → 归档 Release APK
+# ============================================================
+
+name: YCL-Launcher CI/CD
+
+on:
+  # 推送到 main / master 分支时触发
+  push:
+    branches:
+      - main
+      - master
+  # 向 main / master 分支发起 Pull Request 时触发
+  pull_request:
+    branches:
+      - main
+      - master
+  # 允许手动触发
+  workflow_dispatch:
+
+# 并发控制：同一分支的新提交自动取消旧的构建
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 编译 Release APK (arm64-v8a)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ==========================================================
+      # Step 1：检出代码
+      # ==========================================================
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # ==========================================================
+      # Step 2：配置 JDK 17（Android 编译需要）
+      # ==========================================================
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ==========================================================
+      # Step 3：配置 Android SDK
+      # ==========================================================
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;27.0.12077973
+
+      # ==========================================================
+      # Step 4：缓存 Gradle 依赖（加速后续构建）
+      # ==========================================================
+      - name: 缓存 Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # ==========================================================
+      # Step 5：赋予 Gradle Wrapper 执行权限
+      # ==========================================================
+      - name: 赋予 Gradle 执行权限
+        run: chmod +x ./gradlew
+
+      # ==========================================================
+      # Step 6：执行 Gradle 编译（Release 使用 debug 签名）
+      # ==========================================================
+      - name: 编译 Release APK
+        run: ./gradlew assembleRelease
+
+      # ==========================================================
+      # Step 7：归档 APK 产物
+      # ==========================================================
+      - name: 上传 Release APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: YCL-Launcher-Release-APK
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/release/*.json
+          retention-days: 30
+          compression-level: 6
+
+      # ==========================================================
+      # Step 8：生成构建摘要信息
+      # ==========================================================
+      - name: 构建摘要
+        run: |
+          echo "### ✅ YCL启动器 构建成功" >> $GITHUB_STEP_SUMMARY
+          echo "**构建时间**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**提交**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**分支**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**架构**: arm64-v8a" >> $GITHUB_STEP_SUMMARY
+          echo "**目标 API**: 36 (Android 16)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📦 APK 产物可在本页底部 **Artifacts** 区域下载" >> $GITHUB_STEP_SUMMARY

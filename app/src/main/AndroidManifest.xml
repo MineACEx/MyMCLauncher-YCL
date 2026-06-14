@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================
+  YCL启动器 — AndroidManifest.xml
+  包名：com.mymc.launcher
+  应用名：YCL启动器
+  适配：Android 16 (API 36)，仅 arm64-v8a
+  ============================================================
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ========================================================
+         网络权限
+         ======================================================== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- ========================================================
+         存储权限（Android 16 分区存储兼容）
+         ======================================================== -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- ========================================================
+         前台服务
+         ======================================================== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- 通知权限（Android 13+） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ========================================================
+         应用特性声明
+         ======================================================== -->
+    <!-- 仅适配 arm64 设备 -->
+    <uses-feature android:name="android.hardware.screen.landscape" />
+
+    <application
+        android:name=".YCLApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.YCLLauncher"
+        android:largeHeap="true"
+        android:hasFragileUserData="true"
+        tools:targetApi="36">
+
+        <!-- ====================================================
+             主 Activity（强制横屏）
+             ==================================================== -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask"
+            android:resizeableActivity="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ====================================================
+             OAuth 重定向 Activity（微软登录回调）
+             ==================================================== -->
+        <activity
+            android:name=".ui.screens.account.OAuthRedirectActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- 微软 OAuth 回调 scheme -->
+                <data android:scheme="mymclauncher" android:host="oauth" />
+            </intent-filter>
+        </activity>
+
+        <!-- ====================================================
+             下载服务（断点续传）
+             ==================================================== -->
+        <service
+            android:name=".service.download.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <!-- ====================================================
+             游戏进程服务
+             ==================================================== -->
+        <service
+            android:name=".service.game.GameProcessService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+    </application>
+
+</manifest>

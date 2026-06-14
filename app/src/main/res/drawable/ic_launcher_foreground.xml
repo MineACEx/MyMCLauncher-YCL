@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  YCL启动器 — 应用图标矢量图
+  设计：极简深海蓝风格，几何方块+字母 "YCL"
+  主色调：#0D47A1（深海蓝）
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 背景圆角矩形 -->
+    <path
+        android:fillColor="#0D47A1"
+        android:pathData="M12,18C12,14.686 14.686,12 18,12h72c3.314,0 6,2.686 6,6v72c0,3.314 -2.686,6 -6,6h-72c-3.314,0 -6,-2.686 -6,-6z" />
+
+    <!-- 内部方块图案 - 代表 Minecraft 方块 -->
+    <!-- 左上深色方块 -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M24,24h24v24h-24z" />
+
+    <!-- 右上浅色方块 -->
+    <path
+        android:fillColor="#42A5F5"
+        android:pathData="M60,24h24v24h-24z" />
+
+    <!-- 左下中色方块 -->
+    <path
+        android:fillColor="#1E88E5"
+        android:pathData="M24,60h24v24h-24z" />
+
+    <!-- 右下深色方块 -->
+    <path
+        android:fillColor="#0D47A1"
+        android:pathData="M60,60h24v24h-24z" />
+
+    <!-- YCL 文字 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,50 L42,50 L42,58 L50,50 L55,50 L47,58 L55,66 L50,66 L42,58 L42,66 L38,66 Z" />
+
+</vector>

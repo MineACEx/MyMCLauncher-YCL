@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  YCL启动器 — 亮色主题
+  页面纯白背景，UI/图标为深海蓝
+-->
+<resources>
+    <style name="Theme.YCLLauncher" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 状态栏 -->
+        <item name="android:statusBarColor">@color/deep_sea_blue_dark</item>
+        <item name="android:navigationBarColor">@color/light_background</item>
+        <item name="android:windowBackground">@color/light_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

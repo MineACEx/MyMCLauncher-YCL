@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YCL启动器 — Android 12+ 数据提取规则 -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="accounts/" />
+        <include domain="file" path="config/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="." />
+        <include domain="file" path="accounts/" />
+        <include domain="file" path="config/" />
+    </device-transfer>
+</data-extraction-rules>

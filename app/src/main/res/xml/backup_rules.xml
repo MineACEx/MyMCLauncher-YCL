@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YCL启动器 — 完整备份规则 -->
+<full-backup-content>
+    <include domain="sharedpref" path="." />
+    <include domain="file" path="accounts/" />
+    <include domain="file" path="config/" />
+    <include domain="file" path="background" />
+</full-backup-content>

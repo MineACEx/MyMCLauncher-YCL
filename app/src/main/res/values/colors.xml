@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  YCL启动器 — 主题色定义
+  默认深海蓝（Deep Sea Blue）
+-->
+<resources>
+    <!-- 深海蓝主色调 -->
+    <color name="deep_sea_blue">#FF0D47A1</color>
+    <color name="deep_sea_blue_light">#FF1565C0</color>
+    <color name="deep_sea_blue_dark">#FF0A3578</color>
+
+    <!-- 亮色主题 -->
+    <color name="light_background">#FFFFFFFF</color>
+    <color name="light_surface">#FFF5F7FA</color>
+    <color name="light_on_background">#FF1A1A2E</color>
+    <color name="light_on_surface">#FF2D2D44</color>
+
+    <!-- 暗色主题 -->
+    <color name="dark_background">#FF121212</color>
+    <color name="dark_surface">#FF1E1E2E</color>
+    <color name="dark_on_background">#FFE0E0E0</color>
+    <color name="dark_on_surface">#FFC0C0D0</color>
+
+    <!-- 功能色 -->
+    <color name="success">#FF4CAF50</color>
+    <color name="warning">#FFFFC107</color>
+    <color name="error">#FFE53935</color>
+    <color name="info">#FF2196F3</color>
+</resources>
