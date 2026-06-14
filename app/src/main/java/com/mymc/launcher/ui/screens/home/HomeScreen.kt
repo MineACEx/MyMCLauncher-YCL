@@ -37,6 +37,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.service.account.AccountManager
 import com.mymc.launcher.service.version.VersionManager
 import com.mymc.launcher.ui.components.BottomNavBar
+import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
