@@ -90,7 +90,6 @@ class PreferencesManager private constructor(private val context: Context) {
         val BACKGROUND_PATH = stringPreferencesKey("background_path")
         val DPI = stringPreferencesKey("dpi")
         val FONT_WEIGHT = stringPreferencesKey("font_weight")
-        val USE_MIRROR = booleanPreferencesKey("use_mirror")
     }
 
     // ==================== 数据流 ====================
@@ -191,23 +190,6 @@ class PreferencesManager private constructor(private val context: Context) {
         }
         .map { preferences ->
             (preferences[Keys.FONT_WEIGHT] ?: DEFAULT_FONT_WEIGHT.toString()).toIntOrNull() ?: DEFAULT_FONT_WEIGHT
-        }
-
-    /**
-     * 下载源偏好数据流
-     *
-     * true  = 优先使用中国镜像（BMCLAPI），失败后回退官方源
-     * false = 仅使用 GitHub 官方源
-     *
-     * @return Flow<Boolean>
-     */
-    val useMirrorFlow: Flow<Boolean> = context.dataStore.data
-        .catch { exception ->
-            LogUtil.error("PreferencesManager", "读取下载源偏好失败", exception)
-            emit(emptyPreferences())
-        }
-        .map { preferences ->
-            preferences[Keys.USE_MIRROR] ?: true   // 默认使用中国镜像
         }
 
     // ==================== 写入方法 ====================
@@ -333,22 +315,6 @@ class PreferencesManager private constructor(private val context: Context) {
             LogUtil.info("PreferencesManager", "字体粗细已更新: $weight")
         } catch (e: IOException) {
             LogUtil.error("PreferencesManager", "保存字体粗细失败", e)
-        }
-    }
-
-    /**
-     * 设置 Java 下载源偏好
-     *
-     * @param useMirror true = 优先中国镜像（BMCLAPI），false = 仅官方源
-     */
-    suspend fun setUseMirror(useMirror: Boolean) {
-        try {
-            context.dataStore.edit { preferences ->
-                preferences[Keys.USE_MIRROR] = useMirror
-            }
-            LogUtil.info("PreferencesManager", "下载源偏好已更新: ${if (useMirror) "中国镜像" else "官方源"}")
-        } catch (e: IOException) {
-            LogUtil.error("PreferencesManager", "保存下载源偏好失败", e)
         }
     }
 

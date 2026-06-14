@@ -168,10 +168,6 @@ class SettingsViewModel : ViewModel() {
     private val _fontWeight = MutableStateFlow(400)
     val fontWeight: StateFlow<Int> = _fontWeight.asStateFlow()
 
-    /** 是否使用中国镜像下载 Java（默认 true） */
-    private val _useMirror = MutableStateFlow(true)
-    val useMirror: StateFlow<Boolean> = _useMirror.asStateFlow()
-
     /** 颜色选择器弹窗 */
     private val _showColorPicker = MutableStateFlow(false)
     val showColorPicker: StateFlow<Boolean> = _showColorPicker.asStateFlow()
@@ -193,12 +189,6 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             preferencesManager.fontWeightFlow.collect { weight ->
                 _fontWeight.value = weight
-            }
-        }
-        // 从 DataStore 读取下载源偏好
-        viewModelScope.launch {
-            preferencesManager.useMirrorFlow.collect { mirror ->
-                _useMirror.value = mirror
             }
         }
     }
@@ -259,13 +249,6 @@ class SettingsViewModel : ViewModel() {
         ThemeManager.setFontWeight(weight)
     }
 
-    fun toggleUseMirror(enabled: Boolean) {
-        _useMirror.value = enabled
-        viewModelScope.launch {
-            preferencesManager.setUseMirror(enabled)
-        }
-    }
-
     fun openColorPicker() {
         _showColorPicker.value = true
     }
@@ -301,7 +284,6 @@ fun SettingsScreen(
     val appVersion by viewModel.appVersion.collectAsState()
     val customDpi by viewModel.customDpi.collectAsState()
     val fontWeight by viewModel.fontWeight.collectAsState()
-    val useMirror by viewModel.useMirror.collectAsState()
     val showColorPicker by viewModel.showColorPicker.collectAsState()
 
     // 图片选择器
@@ -567,32 +549,6 @@ fun SettingsScreen(
             ) {
                 Text("重置为自动")
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-            // ── Java 下载源切换 ──
-            Text(
-                text = "Java 下载源",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsToggleRow(
-                title = "使用中国镜像（推荐）",
-                checked = useMirror,
-                onCheckedChange = { viewModel.toggleUseMirror(it) }
-            )
-            Text(
-                text = if (useMirror)
-                    "当前：BMCLAPI 镜像源（国内高速）→ 官方源备用"
-                else
-                    "当前：GitHub Adoptium 官方源",
-                fontSize = 12.sp,
-                color = Color.Gray,
-                modifier = Modifier.padding(start = 4.dp)
-            )
 
             Spacer(modifier = Modifier.height(16.dp))
 

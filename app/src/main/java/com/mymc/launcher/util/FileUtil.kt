@@ -138,7 +138,6 @@ object FileUtil {
 
     /**
      * 带进度回调的解压 tar.gz 文件（使用 GZIP + Tar）
-     * 自动根据 tar entry 的 POSIX mode 为可执行文件设置可执行权限。
      *
      * @param tarGzFile     tar.gz 文件
      * @param destDir       目标解压目录
@@ -171,8 +170,6 @@ object FileUtil {
                                 FileOutputStream(entryFile).use { fos ->
                                     tarIn.copyTo(fos, BUFFER_SIZE)
                                 }
-                                // 根据 tar entry 的 POSIX mode 设置可执行权限
-                                applyTarEntryPermissions(entryFile, entry.mode)
                             }
                             completedCount++
                             onProgress(entry.name, completedCount)
@@ -191,7 +188,6 @@ object FileUtil {
 
     /**
      * 带进度回调的解压 tar.xz 文件（使用 XZ + Tar）
-     * 自动根据 tar entry 的 POSIX mode 为可执行文件设置可执行权限。
      *
      * @param tarXzFile     tar.xz 文件
      * @param destDir       目标解压目录
@@ -224,8 +220,6 @@ object FileUtil {
                                 FileOutputStream(entryFile).use { fos ->
                                     tarIn.copyTo(fos, BUFFER_SIZE)
                                 }
-                                // 根据 tar entry 的 POSIX mode 设置可执行权限
-                                applyTarEntryPermissions(entryFile, entry.mode)
                             }
                             completedCount++
                             onProgress(entry.name, completedCount)
@@ -239,34 +233,6 @@ object FileUtil {
         } catch (e: Exception) {
             LogUtil.error("FileUtil", "tar.xz 解压失败: ${tarXzFile.absolutePath}", e)
             false
-        }
-    }
-
-    /**
-     * 根据 POSIX 八进制 mode 设置文件权限
-     *
-     * tar entry.mode 是标准 POSIX 权限整数，如 0100755。
-     * 只要 owner/group/other 中任意一个具有可执行位 (0111)，
-     * 就对该文件调用 setExecutable(true, false)。
-     *
-     * @param file  要设置权限的文件
-     * @param mode  tar entry 的 POSIX mode（整数）
-     */
-    private fun applyTarEntryPermissions(file: File, mode: Int) {
-        // POSIX 可执行位掩码：owner(0100) | group(0010) | other(0001)
-        val execMask = 0b001_001_001  // 0o111 = 73
-        if (mode and execMask != 0) {
-            file.setExecutable(true, false)
-        }
-        // 可写位：owner(0200) | group(0020) | other(0002)
-        val writeMask = 0b010_010_010  // 0o222 = 146
-        if (mode and writeMask != 0) {
-            file.setWritable(true, false)
-        }
-        // 可读位：owner(0400) | group(0040) | other(0004)
-        val readMask = 0b100_100_100  // 0o444 = 292
-        if (mode and readMask != 0) {
-            file.setReadable(true, false)
         }
     }
 

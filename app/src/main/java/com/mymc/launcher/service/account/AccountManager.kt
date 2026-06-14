@@ -64,8 +64,8 @@ class AccountManager private constructor(private val context: Context) {
         /** 微软 OAuth 客户端 ID（Minecraft 启动器官方） */
         private const val MICROSOFT_CLIENT_ID = "00000000402b5328"
 
-        /** 微软 OAuth 授权范围（Microsoft identity platform v2.0 标准范围） */
-        private const val MICROSOFT_SCOPE = "XboxLive.signin offline_access"
+        /** 微软 OAuth 授权范围 */
+        private const val MICROSOFT_SCOPE = "service::user.auth.xboxlive.com::MBI_SSL"
 
         /** 微软 OAuth 设备码端点 */
         private const val MICROSOFT_DEVICE_CODE_URL =

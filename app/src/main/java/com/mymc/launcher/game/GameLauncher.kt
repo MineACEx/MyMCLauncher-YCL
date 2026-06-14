@@ -4,13 +4,11 @@ import android.content.Context
 import android.content.Intent
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import com.mymc.launcher.data.local.PreferencesManager
 import com.mymc.launcher.domain.model.GameVersion
 import com.mymc.launcher.service.version.VersionManager
 import com.mymc.launcher.util.LogUtil
 import com.mymc.launcher.ui.activity.GameLaunchActivity
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileReader
@@ -45,7 +43,6 @@ object GameLauncher {
             LogUtil.info(TAG, "准备启动游戏: ${version.versionId}")
 
             val versionManager = VersionManager.getInstance(context)
-            val prefsManager = PreferencesManager.getInstance(context)
             val versionDir = File(context.filesDir, ".minecraft/versions/${version.versionId}")
 
             // 1. 解析版本 JSON
@@ -71,7 +68,7 @@ object GameLauncher {
                 return@withContext false
             }
 
-            // 3. 构建 classpath
+            // 3. 构建 classpath（参照 FCL DefaultGameRepository.getClasspath）
             val classpath = buildClasspath(versionMeta, versionDir, context)
 
             // 4. 获取资源目录
@@ -81,12 +78,7 @@ object GameLauncher {
             val assetsDir = File(context.filesDir, ".minecraft/assets")
             val runDir = versionManager.getRunDirectory(version.versionId)
 
-            // 5. 从 PreferencesManager 读取 JVM 参数和 DPI
-            val javaArgs = prefsManager.jvmArgsFlow.first()
-            val customDpi = prefsManager.dpiFlow.first()
-            LogUtil.info(TAG, "JVM 参数: $javaArgs, 自定义 DPI: $customDpi")
-
-            // 6. 构建启动参数
+            // 5. 构建启动参数
             val launchArgs = buildLaunchArgs(
                 version = version,
                 mainClass = mainClass,
@@ -94,13 +86,12 @@ object GameLauncher {
                 assetIndexId = assetIndexId,
                 assetsDir = assetsDir,
                 gameDir = runDir,
-                javaArgs = javaArgs,
-                customDpi = customDpi
+                javaArgs = "-Xmx2G -XX:+UseG1GC"
             )
 
             LogUtil.info(TAG, "启动参数: ${launchArgs.joinToString(" ")}")
 
-            // 7. 启动 GameLaunchActivity
+            // 6. 启动 GameLaunchActivity
             val intent = Intent(context, GameLaunchActivity::class.java).apply {
                 putExtra("version_id", version.versionId)
                 putExtra("main_class", mainClass)
@@ -179,12 +170,11 @@ object GameLauncher {
         assetIndexId: String,
         assetsDir: File,
         gameDir: File,
-        javaArgs: String,
-        customDpi: Int = 0
+        javaArgs: String
     ): Array<String> {
         val args = mutableListOf<String>()
 
-        // JVM 参数（从 PreferencesManager 读取）
+        // JVM 参数（使用传入的 javaArgs，解析空格分隔的参数）
         if (javaArgs.isNotBlank()) {
             javaArgs.split("\\s+".toRegex()).forEach { arg ->
                 if (arg.isNotBlank()) args.add(arg)
@@ -220,13 +210,6 @@ object GameLauncher {
         args.add("mojang")
         args.add("--versionType")
         args.add("release")
-
-        // 自定义 DPI（> 0 时生效）
-        if (customDpi > 0) {
-            args.add("--width")
-            args.add("${customDpi}")
-            LogUtil.info(TAG, "应用自定义 DPI: $customDpi")
-        }
 
         return args.toTypedArray()
     }
