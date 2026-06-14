@@ -1,28 +1,28 @@
 # ============================================================
 # YCL启动器 — GitHub Actions 云端自动打包工作流
-# 功能：Push/PR 触发 → 编译 → 签名 → 归档 Release APK
+# 功能：Push/PR 触发 → 编译 → 归档 Release APK
 # ============================================================
 
 name: YCL-Launcher CI/CD
 
 on:
-  # 推送到 main / master 分支时触发
   push:
     branches:
       - main
       - master
-  # 向 main / master 分支发起 Pull Request 时触发
   pull_request:
     branches:
       - main
       - master
-  # 允许手动触发
   workflow_dispatch:
 
-# 并发控制：同一分支的新提交自动取消旧的构建
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# 强制使用 Node.js 24（解决 Node 20 弃用警告）
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ==========================================================
-      # Step 2：配置 JDK 17（Android 编译需要）
+      # Step 2：配置 JDK 17
       # ==========================================================
       - name: 配置 JDK 17
         uses: actions/setup-java@v4
@@ -46,18 +46,54 @@ jobs:
           distribution: 'temurin'
 
       # ==========================================================
-      # Step 3：配置 Android SDK
+      # Step 3：安装 Android SDK 组件
+      #   直接使用 sdkmanager 命令行，逐个安装包
+      #   避免 setup-android action 的 packages 参数格式化 Bug
       # ==========================================================
-      - name: 配置 Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-36
-            build-tools;36.0.0
-            ndk;27.0.12077973
+      - name: 安装 Android SDK 组件
+        run: |
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+
+          # 使用预装的 cmdline-tools（latest 符号链接指向最新版本）
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -f "$SDKMANAGER" ]; then
+            # 回退：查找其他 cmdline-tools 版本
+            SDKMANAGER=$(find "${ANDROID_SDK_ROOT}/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)
+          fi
+          echo "SDK Manager: ${SDKMANAGER}"
+
+          # 接受所有 SDK 许可证
+          yes | ${SDKMANAGER} --licenses > /dev/null 2>&1 || true
+
+          # 逐个安装 SDK 包
+          echo ">>> 安装 platforms;android-36"
+          ${SDKMANAGER} "platforms;android-36" || echo "⚠️ 跳过（可能已安装或不存在）"
+
+          echo ">>> 安装 build-tools;36.0.0"
+          ${SDKMANAGER} "build-tools;36.0.0" || {
+            echo "⚠️ build-tools;36.0.0 不可用，查找最新 build-tools..."
+            LATEST_BT=$(${SDKMANAGER} --list 2>/dev/null | grep "build-tools;" | grep -v "rc" | tail -1 | awk '{print $1}')
+            if [ -n "$LATEST_BT" ]; then
+              echo ">>> 安装 ${LATEST_BT}"
+              ${SDKMANAGER} "${LATEST_BT}" || echo "⚠️ 安装失败"
+            fi
+          }
+
+          echo ">>> 安装 ndk;27.0.12077973"
+          ${SDKMANAGER} "ndk;27.0.12077973" || echo "⚠️ NDK 跳过（纯 Kotlin 项目非必需）"
+
+          echo "=== 环境就绪 ==="
 
       # ==========================================================
-      # Step 4：缓存 Gradle 依赖（加速后续构建）
+      # Step 4：设置 ANDROID_HOME 环境变量
+      # ==========================================================
+      - name: 设置 Android 环境变量
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+
+      # ==========================================================
+      # Step 5：缓存 Gradle 依赖
       # ==========================================================
       - name: 缓存 Gradle
         uses: actions/cache@v4
@@ -70,19 +106,19 @@ jobs:
             gradle-${{ runner.os }}-
 
       # ==========================================================
-      # Step 5：赋予 Gradle Wrapper 执行权限
+      # Step 6：赋予 Gradle Wrapper 执行权限
       # ==========================================================
       - name: 赋予 Gradle 执行权限
         run: chmod +x ./gradlew
 
       # ==========================================================
-      # Step 6：执行 Gradle 编译（Release 使用 debug 签名）
+      # Step 7：编译 Release APK（使用 debug 签名）
       # ==========================================================
       - name: 编译 Release APK
         run: ./gradlew assembleRelease
 
       # ==========================================================
-      # Step 7：归档 APK 产物
+      # Step 8：归档 APK 产物
       # ==========================================================
       - name: 上传 Release APK 产物
         uses: actions/upload-artifact@v4
@@ -95,7 +131,7 @@ jobs:
           compression-level: 6
 
       # ==========================================================
-      # Step 8：生成构建摘要信息
+      # Step 9：构建摘要
       # ==========================================================
       - name: 构建摘要
         run: |
