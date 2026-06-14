@@ -159,30 +159,14 @@ com.mymc.launcher/
 git clone <your-repo-url>
 cd YCL-Launcher
 
-# 2. 使 Gradle Wrapper 可执行
+# 2. 生成 Gradle Wrapper（如果本地安装了 Gradle）
+gradle wrapper --gradle-version 8.11.1
 chmod +x ./gradlew
 
 # 3. 编译 Debug 版本（无需签名）
 ./gradlew assembleDebug
 
-# 4. 编译 Release 版本（需要签名密钥）
-# 先创建签名密钥文件：
-keytool -genkey -v \
-  -keystore app/release.jks \
-  -alias ycllauncher \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000 \
-  -storepass your_password \
-  -keypass your_password
-
-# 在 gradle.properties 或 ~/.gradle/gradle.properties 中添加：
-# RELEASE_STORE_FILE=app/release.jks
-# RELEASE_STORE_PASSWORD=your_password
-# RELEASE_KEY_ALIAS=ycllauncher
-# RELEASE_KEY_PASSWORD=your_password
-
-# 编译 Release APK
+# 4. 编译 Release 版本（使用 debug 签名，用户可自行重签名）
 ./gradlew assembleRelease
 
 # 5. 产物位置
@@ -204,41 +188,33 @@ keytool -genkey -v \
 ### 5.1 工作流说明
 工作流文件位置：`.github/workflows/build.yml`
 
+**极简流程**（仅 7 个步骤，无需任何 Secrets 配置）：
+1. 检出代码
+2. 配置 JDK 17
+3. 用系统 Gradle 生成 Wrapper（`gradle wrapper --gradle-version 8.11.1`）
+4. 缓存 Gradle 依赖
+5. `./gradlew assembleRelease` 编译
+6. 归档 APK 产物
+
+**关键发现**：GitHub Actions `ubuntu-24.04` 镜像**已预装**：
+- Gradle 9.5.1
+- Android SDK：`platforms;android-36` + `build-tools;36.0.0` + NDK 27
+- JDK 17（默认）
+
+因此完全不需要 `setup-android` action 或手动 sdkmanager 安装。
+
 触发条件：
 - Push 到 `main` / `master` 分支
 - 向 `main` / `master` 发起 Pull Request
 - 手动触发（workflow_dispatch）
 
-### 5.2 配置 GitHub Secrets
-
-在 GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret，添加以下密钥：
-
-| Secret 名称 | 说明 | 获取方式 |
-|-------------|------|---------|
-| `KEYSTORE_BASE64` | 签名密钥文件的 Base64 编码 | `base64 -i app/release.jks \| pbcopy` |
-| `KEYSTORE_PASSWORD` | 签名密钥库密码 | 创建密钥时设置的密码 |
-| `KEY_ALIAS` | 签名密钥别名 | 创建密钥时设置的别名（如 `ycllauncher`） |
-| `KEY_PASSWORD` | 签名密钥密码 | 创建密钥时设置的密钥密码 |
-
-> ⚠️ **安全警告**：切勿将以上信息硬编码到 `build.gradle.kts` 或提交到仓库！
-
-### 5.3 生成 KEYSTORE_BASE64
-
-```bash
-# macOS / Linux
-base64 -i app/release.jks | tr -d '\n'
-
-# Windows PowerShell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("app\release.jks"))
-```
-
-将输出的 Base64 字符串完整复制到 GitHub Secrets 中。
-
-### 5.4 构建产物获取
+### 5.2 构建产物获取
 1. 进入 GitHub 仓库 → Actions 标签页
 2. 点击最新的一次 Workflow Run
 3. 滚动到页面底部 → Artifacts 区域
 4. 下载 `YCL-Launcher-Release-APK`
+
+> **注意**：Release APK 使用 debug 签名，用户安装后可用自己的密钥通过 `apksigner` 重签名。
 
 ---
 
