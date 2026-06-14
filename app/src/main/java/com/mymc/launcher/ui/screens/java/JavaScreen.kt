@@ -145,7 +145,10 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
             updateStatus(version, JavaInstallStatus.DOWNLOADING, 0f)
             val versionNum = version.removePrefix("Java ")
             try {
-                val success = javaEnvManager.extractJavaRuntime(versionNum) { progress ->
+                val success = javaEnvManager.extractJavaRuntime(versionNum) { _, completedCount ->
+                    // extractJavaRuntime 回调签名为 (entryName: String, completedCount: Int)
+                    // 将完成数量归一化为 0.0~1.0 进度（最多估算 500 个文件条目）
+                    val progress = (completedCount.toFloat() / 500f).coerceIn(0f, 1f)
                     updateStatus(version, JavaInstallStatus.DOWNLOADING, progress)
                     _extractMessage.value = "解压中... ${(progress * 100).toInt()}%"
                 }

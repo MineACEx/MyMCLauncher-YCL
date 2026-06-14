@@ -1,10 +1,12 @@
 package com.mymc.launcher.service.java
 
 import android.content.Context
+import com.mymc.launcher.data.local.PreferencesManager
 import com.mymc.launcher.domain.model.JavaVersion
 import com.mymc.launcher.util.FileUtil
 import com.mymc.launcher.util.LogUtil
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -28,11 +30,25 @@ class JavaManager private constructor(private val context: Context) {
         /** 应用内部存储中 Java 安装的根目录 */
         private const val JAVA_DIR = "java"
 
-        /** 各 Java 版本的默认 arm64 OpenJDK 下载地址（Adoptium/Temurin） */
-        private const val JAVA_8_URL  = "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u432-b06/OpenJDK8U-jdk_aarch64_linux_hotspot_8u432b06.tar.gz"
-        private const val JAVA_17_URL = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.13_11.tar.gz"
-        private const val JAVA_21_URL = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.5_11.tar.gz"
-        private const val JAVA_25_URL = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25%2B36/OpenJDK25U-jdk_aarch64_linux_hotspot_25_36.tar.gz"
+        // ==================== 官方源地址（GitHub Adoptium/Temurin） ====================
+        private const val JAVA_8_URL_OFFICIAL  = "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u432-b06/OpenJDK8U-jdk_aarch64_linux_hotspot_8u432b06.tar.gz"
+        private const val JAVA_17_URL_OFFICIAL = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.13_11.tar.gz"
+        private const val JAVA_21_URL_OFFICIAL = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.5_11.tar.gz"
+        private const val JAVA_25_URL_OFFICIAL = "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25%2B36/OpenJDK25U-jdk_aarch64_linux_hotspot_25_36.tar.gz"
+
+        // ==================== 中国镜像地址（BMCLAPI — 国内高速） ====================
+        // BMCLAPI 将 GitHub Releases 文件代理到国内 CDN，中国用户下载速度大幅提升
+        private const val BMCLAPI_BASE = "https://bmclapi2.bangbang93.com/mirrors/adoptium"
+        private const val JAVA_8_URL_MIRROR  = "$BMCLAPI_BASE/temurin8-binaries/releases/download/jdk8u432-b06/OpenJDK8U-jdk_aarch64_linux_hotspot_8u432b06.tar.gz"
+        private const val JAVA_17_URL_MIRROR = "$BMCLAPI_BASE/temurin17-binaries/releases/download/jdk-17.0.13%2B11/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.13_11.tar.gz"
+        private const val JAVA_21_URL_MIRROR = "$BMCLAPI_BASE/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.5_11.tar.gz"
+        private const val JAVA_25_URL_MIRROR = "$BMCLAPI_BASE/temurin25-binaries/releases/download/jdk-25%2B36/OpenJDK25U-jdk_aarch64_linux_hotspot_25_36.tar.gz"
+
+        // ==================== 向后兼容的快捷常量 ====================
+        private const val JAVA_8_URL  = JAVA_8_URL_OFFICIAL
+        private const val JAVA_17_URL = JAVA_17_URL_OFFICIAL
+        private const val JAVA_21_URL = JAVA_21_URL_OFFICIAL
+        private const val JAVA_25_URL = JAVA_25_URL_OFFICIAL
 
         @Volatile
         private var instance: JavaManager? = null
@@ -105,8 +121,9 @@ class JavaManager private constructor(private val context: Context) {
     /**
      * 下载并安装指定版本的 Java 运行时
      *
-     * 下载 tar.gz 压缩包到临时目录，解压到 java/{version}/ 目录。
-     * 通过 onProgress 回调报告下载进度（0.0 ~ 1.0）。
+     * 自动从 PreferencesManager 读取用户的下载源偏好：
+     * - useMirror = true  → 优先 BMCLAPI 镜像，失败后回退 GitHub 官方源
+     * - useMirror = false → 仅使用 GitHub 官方源
      *
      * @param version    Java 版本号，如 "8"、"17"、"21"、"25"
      * @param onProgress 下载及解压进度回调，Float 范围 0.0~1.0
@@ -116,43 +133,60 @@ class JavaManager private constructor(private val context: Context) {
         version: String,
         onProgress: (Float) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
-        val downloadUrl = getDownloadUrl(version) ?: run {
+        // 从 DataStore 读取用户下载源偏好
+        val useMirror = PreferencesManager.getInstance(context).useMirrorFlow.first()
+        val mirrorUrl   = getMirrorUrl(version)
+        val officialUrl = getDownloadUrl(version)
+        if (officialUrl == null) {
             LogUtil.error(TAG, "不支持的 Java 版本: $version")
             return@withContext false
         }
 
+        val urlCandidates = if (useMirror && mirrorUrl != null) {
+            listOf(mirrorUrl, officialUrl)
+        } else {
+            listOf(officialUrl)
+        }
+
         val installDir = getJavaInstallDir(version)
-        // 如果已安装则先清理旧文件
         if (installDir.exists()) {
             LogUtil.info(TAG, "已存在 Java $version 安装目录，清理后重新下载")
             FileUtil.deleteRecursively(installDir)
         }
         installDir.mkdirs()
 
-        // 创建临时下载目录
-        val tempDir = File(context.cacheDir, "java_download")
+        val tempDir  = File(context.cacheDir, "java_download")
         tempDir.mkdirs()
         val tempFile = File(tempDir, "java${version}.tar.gz")
 
-        LogUtil.info(TAG, "开始下载 Java $version: $downloadUrl")
-        onProgress(0f)
+        var downloadSuccess = false
+        for ((index, url) in urlCandidates.withIndex()) {
+            val label = if (index == 0 && useMirror && mirrorUrl != null) "中国镜像" else "官方源"
+            LogUtil.info(TAG, "开始从 $label 下载 Java $version: $url")
+            onProgress(0f)
 
-        // 下载文件（占用 80% 的进度）
-        val downloadSuccess = FileUtil.downloadWithResume(
-            downloadUrl = downloadUrl,
-            targetFile = tempFile,
-            onProgress = { downloaded, total ->
-                val progress = if (total > 0) {
-                    0.8f * (downloaded.toFloat() / total.toFloat())
-                } else {
-                    0f
+            // 换源时清除残留临时文件
+            if (tempFile.exists()) tempFile.delete()
+
+            downloadSuccess = FileUtil.downloadWithResume(
+                downloadUrl = url,
+                targetFile  = tempFile,
+                onProgress  = { downloaded, total ->
+                    val progress = if (total > 0) 0.8f * (downloaded.toFloat() / total) else 0f
+                    onProgress(progress)
                 }
-                onProgress(progress)
+            )
+
+            if (downloadSuccess) {
+                LogUtil.info(TAG, "Java $version 从 $label 下载成功")
+                break
+            } else {
+                LogUtil.warn(TAG, "Java $version 从 $label 下载失败，尝试下一个源...")
             }
-        )
+        }
 
         if (!downloadSuccess) {
-            LogUtil.error(TAG, "Java $version 下载失败")
+            LogUtil.error(TAG, "Java $version 所有下载源均失败")
             onProgress(0f)
             return@withContext false
         }
@@ -160,16 +194,16 @@ class JavaManager private constructor(private val context: Context) {
         onProgress(0.8f)
         LogUtil.info(TAG, "Java $version 下载完成，开始解压...")
 
-        // 解压 tar.gz 到安装目录（使用 GZIP + Tar 解压）
         val unzipSuccess = FileUtil.unTarGzWithProgress(
             tarGzFile = tempFile,
-            destDir = installDir,
-            onProgress = { entryName, completedCount ->
-                // 解压进度：80%～100%
+            destDir   = installDir,
+            onProgress = { _, completedCount ->
                 val progress = 0.8f + 0.2f * (completedCount.toFloat() / (completedCount + 100f).coerceAtMost(500f))
                 onProgress(progress.coerceAtMost(1f))
             }
         )
+
+        tempFile.delete()
 
         if (!unzipSuccess) {
             LogUtil.error(TAG, "Java $version 解压失败")
@@ -177,10 +211,9 @@ class JavaManager private constructor(private val context: Context) {
             return@withContext false
         }
 
-        // 清理临时文件
-        tempFile.delete()
+        // 解压完成后，对安装目录内所有 bin/ 子目录递归设置可执行权限
+        setExecutableRecursively(installDir)
 
-        // 验证安装
         val verified = verifyJavaInstallation(version)
         if (verified) {
             onProgress(1f)
@@ -288,14 +321,27 @@ class JavaManager private constructor(private val context: Context) {
     // ==================== 私有方法 ====================
 
     /**
-     * 获取指定版本的下载地址
+     * 获取指定版本的官方下载地址（GitHub Adoptium）
      */
     private fun getDownloadUrl(version: String): String? {
         return when (version) {
-            "8"  -> JAVA_8_URL
-            "17" -> JAVA_17_URL
-            "21" -> JAVA_21_URL
-            "25" -> JAVA_25_URL
+            "8"  -> JAVA_8_URL_OFFICIAL
+            "17" -> JAVA_17_URL_OFFICIAL
+            "21" -> JAVA_21_URL_OFFICIAL
+            "25" -> JAVA_25_URL_OFFICIAL
+            else -> null
+        }
+    }
+
+    /**
+     * 获取指定版本的中国镜像下载地址（BMCLAPI）
+     */
+    private fun getMirrorUrl(version: String): String? {
+        return when (version) {
+            "8"  -> JAVA_8_URL_MIRROR
+            "17" -> JAVA_17_URL_MIRROR
+            "21" -> JAVA_21_URL_MIRROR
+            "25" -> JAVA_25_URL_MIRROR
             else -> null
         }
     }
@@ -336,11 +382,6 @@ class JavaManager private constructor(private val context: Context) {
 
     /**
      * 在目录中递归搜索指定名称的文件
-     *
-     * @param dir      起始目录
-     * @param fileName 目标文件名
-     * @param maxDepth 最大递归深度
-     * @return 找到的文件 File 对象，未找到返回 null
      */
     private fun findFileRecursive(dir: File, fileName: String, maxDepth: Int): File? {
         if (maxDepth < 0) return null
@@ -355,5 +396,27 @@ class JavaManager private constructor(private val context: Context) {
             }
         }
         return null
+    }
+
+    /**
+     * 递归为安装目录内所有 bin/ 子目录中的文件设置可执行权限
+     *
+     * tar 提取后某些系统无法通过 entry.mode 还原权限，
+     * 此处在提取完成后对所有 bin/ 目录内文件补充 setExecutable。
+     *
+     * @param rootDir Java 安装根目录
+     */
+    private fun setExecutableRecursively(rootDir: File) {
+        if (!rootDir.exists() || !rootDir.isDirectory) return
+        rootDir.walkTopDown().forEach { file ->
+            if (file.isFile) {
+                val inBin = file.parentFile?.name == "bin" ||
+                            file.absolutePath.contains("/bin/")
+                if (inBin || !file.name.endsWith(".jar")) {
+                    file.setExecutable(true, false)
+                }
+            }
+        }
+        LogUtil.info(TAG, "已为 ${rootDir.absolutePath} 内所有 bin/ 文件设置可执行权限")
     }
 }

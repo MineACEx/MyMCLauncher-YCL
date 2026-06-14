@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -20,6 +21,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -35,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
@@ -77,6 +80,16 @@ class VersionSettingsViewModel(application: Application) : AndroidViewModel(appl
 
     private val _savedJvmArgs = MutableStateFlow("-Xmx2G -XX:+UseG1GC")
 
+    /** 内存分配（单位：GB），从 JVM 参数中解析 -Xmx */
+    private val _maxMemoryGb = MutableStateFlow(2f)
+    val maxMemoryGb: StateFlow<Float> = _maxMemoryGb.asStateFlow()
+
+    /** 自定义 DPI，0 = 自动 */
+    private val _customDpi = MutableStateFlow(0)
+    val customDpi: StateFlow<Int> = _customDpi.asStateFlow()
+
+    private val _savedDpi = MutableStateFlow(0)
+
     /** 加载器安装状态 */
     private val _installLoaderProgress = MutableStateFlow(0f)
     val installLoaderProgress: StateFlow<Float> = _installLoaderProgress.asStateFlow()
@@ -94,8 +107,42 @@ class VersionSettingsViewModel(application: Application) : AndroidViewModel(appl
             preferencesManager.jvmArgsFlow.collect { args ->
                 _jvmArgs.value = args
                 _savedJvmArgs.value = args
+                // 从 JVM 参数字符串中解析 -Xmx 值，同步内存滑块
+                _maxMemoryGb.value = parseXmxGb(args)
             }
         }
+        viewModelScope.launch {
+            preferencesManager.dpiFlow.collect { dpi ->
+                _customDpi.value = dpi
+                _savedDpi.value = dpi
+            }
+        }
+    }
+
+    /** 从 -Xmx 参数中解析内存值（单位 GB），默认 2.0 */
+    private fun parseXmxGb(args: String): Float {
+        val match = Regex("-Xmx(\\d+)([GgMm])").find(args) ?: return 2f
+        val value = match.groupValues[1].toFloatOrNull() ?: return 2f
+        val unit  = match.groupValues[2].lowercase()
+        return if (unit == "g") value else value / 1024f
+    }
+
+    /** 更新内存滑块并同步写入 JVM 参数中的 -Xmx */
+    fun updateMaxMemory(gb: Float) {
+        _maxMemoryGb.value = gb
+        val xmxTag = if (gb >= 1f) "-Xmx${gb.toInt()}G" else "-Xmx${(gb * 1024).toInt()}M"
+        // 替换已有 -Xmx 参数，若不存在则追加
+        val newArgs = if (_jvmArgs.value.contains("-Xmx")) {
+            _jvmArgs.value.replace(Regex("-Xmx\\S+"), xmxTag)
+        } else {
+            "$xmxTag ${_jvmArgs.value}".trim()
+        }
+        _jvmArgs.value = newArgs
+    }
+
+    /** 更新自定义 DPI */
+    fun updateDpi(dpi: Int) {
+        _customDpi.value = dpi.coerceIn(0, PreferencesManager.MAX_DPI)
     }
 
     fun loadVersionInfo(versionId: String) {
@@ -179,16 +226,21 @@ class VersionSettingsViewModel(application: Application) : AndroidViewModel(appl
 
     fun updateJvmArgs(args: String) {
         _jvmArgs.value = args
+        // 同步更新内存滑块
+        _maxMemoryGb.value = parseXmxGb(args)
     }
 
     fun saveJvmArgs() {
         _savedJvmArgs.value = _jvmArgs.value
+        _savedDpi.value = _customDpi.value
         viewModelScope.launch {
             preferencesManager.setJvmArgs(_jvmArgs.value)
+            preferencesManager.setDpi(_customDpi.value)
         }
     }
 
-    fun hasUnsavedChanges(): Boolean = _jvmArgs.value != _savedJvmArgs.value
+    fun hasUnsavedChanges(): Boolean =
+        _jvmArgs.value != _savedJvmArgs.value || _customDpi.value != _savedDpi.value
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -208,6 +260,11 @@ fun VersionSettingsScreen(
     val installLoaderProgress by viewModel.installLoaderProgress.collectAsState()
     val installLoaderMessage by viewModel.installLoaderMessage.collectAsState()
     val isInstallingLoader by viewModel.isInstallingLoader.collectAsState()
+    val maxMemoryGb by viewModel.maxMemoryGb.collectAsState()
+    val customDpi by viewModel.customDpi.collectAsState()
+
+    // DPI 文本框本地状态（允许用户输入过程中暂存字符串）
+    var dpiText by remember(customDpi) { mutableStateOf(if (customDpi > 0) customDpi.toString() else "") }
 
     // 是否显示加载器安装 UI（仅原版版本显示）
     val showLoaderInstall = versionType == "原版" || versionType == "未知"
@@ -356,15 +413,54 @@ fun VersionSettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // JVM 参数
+            // ── 内存分配滑块 ──
+            Text(
+                text = "内存分配",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "最大内存（-Xmx）", fontSize = 14.sp)
+                        Text(
+                            text = if (maxMemoryGb >= 1f) "${maxMemoryGb.toInt()} GB"
+                                   else "${(maxMemoryGb * 1024).toInt()} MB",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Slider(
+                        value = maxMemoryGb,
+                        onValueChange = { viewModel.updateMaxMemory(it) },
+                        valueRange = 0.5f..8f,
+                        steps = 14,   // 0.5G 步进：0.5,1,1.5,...,8 共 15 档
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "512 MB", fontSize = 11.sp, color = Color.Gray)
+                        Text(text = "8 GB", fontSize = 11.sp, color = Color.Gray)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── JVM 参数（完整文本输入） ──
             Text(
                 text = "JVM 参数",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-
             OutlinedTextField(
                 value = jvmArgs,
                 onValueChange = { viewModel.updateJvmArgs(it) },
@@ -374,13 +470,53 @@ fun VersionSettingsScreen(
                 maxLines = 6
             )
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── 自定义 DPI ──
+            Text(
+                text = "画面设置",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "自定义 DPI（0 = 自动，建议 160~480）",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = dpiText,
+                        onValueChange = { input ->
+                            dpiText = input.filter { it.isDigit() }.take(4)
+                            viewModel.updateDpi(dpiText.toIntOrNull() ?: 0)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("DPI 数值") },
+                        placeholder = { Text("0（自动）") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    if (customDpi > 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "当前 DPI：$customDpi",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
             if (viewModel.hasUnsavedChanges()) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = { viewModel.saveJvmArgs() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("保存 JVM 参数")
+                    Text("保存设置（JVM 参数 + DPI）")
                 }
             }
 

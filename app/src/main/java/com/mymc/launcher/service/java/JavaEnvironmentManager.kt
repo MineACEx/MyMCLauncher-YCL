@@ -205,6 +205,9 @@ class JavaEnvironmentManager private constructor(private val context: Context) {
             return@withContext false
         }
 
+        // 解压完成后，对安装目录内所有 bin/ 子目录递归设置可执行权限
+        setExecutableRecursively(installDir)
+
         // 验证安装
         val verified = verifyJavaInstallation(version)
         if (verified) {
@@ -368,5 +371,28 @@ class JavaEnvironmentManager private constructor(private val context: Context) {
             }
         }
         return null
+    }
+
+    /**
+     * 递归为安装目录内所有 bin/ 子目录中的文件设置可执行权限
+     *
+     * tar 提取后某些系统无法通过 entry.mode 还原权限，
+     * 此处在提取完成后对所有 bin/ 目录内文件补充 setExecutable。
+     *
+     * @param rootDir Java 安装根目录
+     */
+    private fun setExecutableRecursively(rootDir: File) {
+        if (!rootDir.exists() || !rootDir.isDirectory) return
+        rootDir.walkTopDown().forEach { file ->
+            if (file.isFile) {
+                val inBin = file.parentFile?.name == "bin" ||
+                            file.absolutePath.contains("/bin/")
+                if (inBin || !file.name.endsWith(".jar")) {
+                    // bin 目录下所有文件，以及非 jar 的其他可执行体都赋予执行权限
+                    file.setExecutable(true, false)
+                }
+            }
+        }
+        LogUtil.info(TAG, "已为 ${rootDir.absolutePath} 内所有 bin/ 文件设置可执行权限")
     }
 }
