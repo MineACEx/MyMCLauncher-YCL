@@ -42,3 +42,31 @@ data class ModrinthProject(
     @SerializedName("downloads")
     val downloads: Int = 0
 )
+
+/**
+ * Modrinth 版本 DTO
+ *
+ * 对应 Modrinth API: GET /project/{id}/version
+ */
+data class ModrinthVersion(
+    @SerializedName("id")
+    val id: String,
+    @SerializedName("name")
+    val name: String,
+    @SerializedName("version_number")
+    val versionNumber: String,
+    @SerializedName("files")
+    val files: List<ModrinthFile>
+)
+
+/**
+ * Modrinth 文件 DTO
+ */
+data class ModrinthFile(
+    @SerializedName("url")
+    val url: String,
+    @SerializedName("filename")
+    val filename: String,
+    @SerializedName("size")
+    val size: Long
+)

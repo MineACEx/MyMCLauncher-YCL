@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -36,15 +34,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.data.local.PreferencesManager
 import com.mymc.launcher.domain.model.GameVersionType
 import com.mymc.launcher.service.version.VersionManager
+import com.mymc.launcher.ui.components.GlassCard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/**
- * 版本设置页面 ViewModel。
- * 使用 AndroidViewModel 获取 Application 上下文以访问版本设置相关服务。
- */
 class VersionSettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val preferencesManager = PreferencesManager.getInstance(application)
@@ -62,7 +57,6 @@ class VersionSettingsViewModel(application: Application) : AndroidViewModel(appl
     private val _savedJvmArgs = MutableStateFlow("-Xmx2G -XX:+UseG1GC")
 
     init {
-        // 从 DataStore 读取已保存的 JVM 参数
         viewModelScope.launch {
             preferencesManager.jvmArgsFlow.collect { args ->
                 _jvmArgs.value = args
@@ -71,12 +65,10 @@ class VersionSettingsViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    /** 加载版本基本信息 */
     fun loadVersionInfo(versionId: String) {
         viewModelScope.launch {
             _versionName.value = versionId
             _versionType.value = "未知"
-            // 尝试从本地版本中获取版本信息
             val localVersions = versionManager.scanLocalVersions()
             val version = localVersions.find { it.versionId == versionId }
             if (version != null) {
@@ -104,9 +96,6 @@ class VersionSettingsViewModel(application: Application) : AndroidViewModel(appl
     fun hasUnsavedChanges(): Boolean = _jvmArgs.value != _savedJvmArgs.value
 }
 
-/**
- * 版本设置页面 Composable。
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VersionSettingsScreen(
@@ -149,14 +138,9 @@ fun VersionSettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 版本信息卡片
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            // 版本信息卡片（毛玻璃风格）
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = "版本信息",
                         style = MaterialTheme.typography.titleMedium,
@@ -170,7 +154,6 @@ fun VersionSettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // JVM 参数设置
             Text(
                 text = "JVM 参数",
                 style = MaterialTheme.typography.titleMedium,
@@ -200,7 +183,6 @@ fun VersionSettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 游戏设置
             Text(
                 text = "游戏设置",
                 style = MaterialTheme.typography.titleMedium,
@@ -224,9 +206,6 @@ fun VersionSettingsScreen(
     }
 }
 
-/**
- * 版本信息行。
- */
 @Composable
 private fun VersionInfoRow(label: String, value: String) {
     Row(
@@ -247,9 +226,6 @@ private fun VersionInfoRow(label: String, value: String) {
     }
 }
 
-/**
- * 设置开关行。
- */
 @Composable
 private fun SettingsRow(
     label: String,

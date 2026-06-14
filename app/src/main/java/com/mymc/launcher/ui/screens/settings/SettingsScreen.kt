@@ -27,6 +27,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -84,11 +85,21 @@ class SettingsViewModel : ViewModel() {
     private val _appVersion = MutableStateFlow("1.0.0")
     val appVersion: StateFlow<String> = _appVersion.asStateFlow()
 
+    /** 自定义 DPI */
+    private val _customDpi = MutableStateFlow(PreferencesManager.DEFAULT_DPI)
+    val customDpi: StateFlow<Int> = _customDpi.asStateFlow()
+
     init {
         // 从 DataStore 读取版本隔离状态
         viewModelScope.launch {
             preferencesManager.versionIsolationFlow.collect { enabled ->
                 _versionIsolationEnabled.value = enabled
+            }
+        }
+        // 从 DataStore 读取 DPI 设置
+        viewModelScope.launch {
+            preferencesManager.dpiFlow.collect { dpi ->
+                _customDpi.value = dpi
             }
         }
     }
@@ -121,6 +132,13 @@ class SettingsViewModel : ViewModel() {
             preferencesManager.setVersionIsolation(enabled)
         }
     }
+
+    fun setCustomDpi(dpi: Int) {
+        _customDpi.value = dpi
+        viewModelScope.launch {
+            preferencesManager.setDpi(dpi)
+        }
+    }
 }
 
 /**
@@ -142,6 +160,7 @@ fun SettingsScreen(
     val backgroundPath by viewModel.backgroundPath.collectAsState()
     val versionIsolationEnabled by viewModel.versionIsolationEnabled.collectAsState()
     val appVersion by viewModel.appVersion.collectAsState()
+    val customDpi by viewModel.customDpi.collectAsState()
 
     // 图片选择器
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -267,6 +286,59 @@ fun SettingsScreen(
                 checked = versionIsolationEnabled,
                 onCheckedChange = { viewModel.toggleVersionIsolation(it) }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+            // 自定义 DPI
+            Text(
+                text = "自定义 DPI",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = if (customDpi == 0) "自动（系统默认）" else "${customDpi} DPI",
+                fontSize = 14.sp,
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${PreferencesManager.MIN_DPI}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+                Slider(
+                    value = customDpi.toFloat(),
+                    onValueChange = { viewModel.setCustomDpi(it.toInt()) },
+                    valueRange = PreferencesManager.MIN_DPI.toFloat()..PreferencesManager.MAX_DPI.toFloat(),
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "${PreferencesManager.MAX_DPI}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+
+            Button(
+                onClick = { viewModel.setCustomDpi(0) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text("重置为自动")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 

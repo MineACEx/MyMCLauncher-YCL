@@ -14,9 +14,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -38,6 +35,7 @@ import com.mymc.launcher.service.account.AccountManager
 import com.mymc.launcher.service.version.VersionManager
 import com.mymc.launcher.ui.components.BottomNavBar
 import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.GlassCard
 import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,7 +53,6 @@ data class HomeData(
 
 /**
  * 首页 ViewModel。
- * 使用 AndroidViewModel 获取 Application 上下文以访问服务。
  */
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -125,16 +122,9 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             if (homeData.installedVersions.isEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                    )
-                ) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
@@ -151,7 +141,6 @@ fun HomeScreen(
                     }
                 }
             } else {
-                // 版本列表横向滚动
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -220,25 +209,20 @@ fun HomeScreen(
 }
 
 /**
- * 欢迎横幅组件。
+ * 欢迎横幅组件（毛玻璃风格）。
  */
 @Composable
 private fun WelcomeBanner(
     accountName: String,
     accountType: String
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-        ),
-        shape = RoundedCornerShape(16.dp)
+        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+        cornerRadius = 16.dp
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "欢迎使用 YCL 启动器",
                 style = MaterialTheme.typography.headlineSmall,
@@ -264,26 +248,28 @@ private fun WelcomeBanner(
 }
 
 /**
- * 版本标签芯片。
+ * 版本标签芯片（毛玻璃风格）。
  */
 @Composable
 private fun VersionChip(
     versionId: String,
     onClick: () -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = Modifier
-        .padding(vertical = 4.dp)
-        .clip(RoundedCornerShape(12.dp))
-        .clickable { onClick() }
-        .scaleOnClick(0.96f),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() },
+        cornerRadius = 12.dp,
+        blurRadius = 6.dp,
+        backgroundColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f),
+        borderColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+        contentPadding = 10.dp,
+        enableClickAnimation = false
     ) {
         Text(
             text = versionId,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 6.dp),
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             fontWeight = FontWeight.Medium
         )
@@ -291,7 +277,7 @@ private fun VersionChip(
 }
 
 /**
- * 快速操作卡片。
+ * 快速操作卡片（毛玻璃风格）。
  */
 @Composable
 private fun QuickActionCard(
@@ -300,20 +286,17 @@ private fun QuickActionCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card(
+    GlassCard(
         modifier = modifier
-        .clip(RoundedCornerShape(12.dp))
-        .clickable { onClick() }
-        .scaleOnClick(0.96f),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() },
+        cornerRadius = 12.dp,
+        blurRadius = 8.dp,
+        contentPadding = 16.dp,
+        enableClickAnimation = false
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(

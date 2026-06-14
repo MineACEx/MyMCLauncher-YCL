@@ -13,15 +13,15 @@ import com.mymc.launcher.util.LogUtil
 
 /**
  * YCL启动器 — 主 Activity
- * 应用唯一入口，强制横屏，使用 Compose 构建 UI
+ * 应用唯一入口，竖屏显示，使用 Compose 构建 UI
  */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 强制横屏
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // 竖屏锁定
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
         // 边到边显示
         enableEdgeToEdge()
@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 确保恢复后保持横屏
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        // 确保恢复后保持竖屏
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
 }

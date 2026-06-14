@@ -66,6 +66,15 @@ class PreferencesManager private constructor(private val context: Context) {
 
         /** 默认背景路径（空字符串表示无自定义背景） */
         const val DEFAULT_BACKGROUND_PATH = ""
+
+        /** 默认 DPI（0 表示自动/系统默认） */
+        const val DEFAULT_DPI = 0
+
+        /** DPI 最小值 */
+        const val MIN_DPI = 72
+
+        /** DPI 最大值 */
+        const val MAX_DPI = 640
     }
 
     // ==================== 偏好设置键定义 ====================
@@ -76,6 +85,7 @@ class PreferencesManager private constructor(private val context: Context) {
         val VERSION_ISOLATION = booleanPreferencesKey("version_isolation")
         val JVM_ARGS = stringPreferencesKey("jvm_args")
         val BACKGROUND_PATH = stringPreferencesKey("background_path")
+        val DPI = stringPreferencesKey("dpi")
     }
 
     // ==================== 数据流 ====================
@@ -148,6 +158,20 @@ class PreferencesManager private constructor(private val context: Context) {
         }
         .map { preferences ->
             preferences[Keys.BACKGROUND_PATH] ?: DEFAULT_BACKGROUND_PATH
+        }
+
+    /**
+     * 自定义 DPI 数据流
+     *
+     * @return Flow<Int> DPI 值，0 表示自动
+     */
+    val dpiFlow: Flow<Int> = context.dataStore.data
+        .catch { exception ->
+            LogUtil.error("PreferencesManager", "读取 DPI 失败", exception)
+            emit(emptyPreferences())
+        }
+        .map { preferences ->
+            (preferences[Keys.DPI] ?: DEFAULT_DPI.toString()).toIntOrNull() ?: DEFAULT_DPI
         }
 
     // ==================== 写入方法 ====================
@@ -237,6 +261,26 @@ class PreferencesManager private constructor(private val context: Context) {
             LogUtil.info("PreferencesManager", "背景路径已更新: $path")
         } catch (e: IOException) {
             LogUtil.error("PreferencesManager", "保存背景路径失败", e)
+        }
+    }
+
+    /**
+     * 设置自定义 DPI
+     *
+     * @param dpi DPI 值，0 表示自动
+     */
+    suspend fun setDpi(dpi: Int) {
+        try {
+            context.dataStore.edit { preferences ->
+                if (dpi > 0) {
+                    preferences[Keys.DPI] = dpi.toString()
+                } else {
+                    preferences.remove(Keys.DPI)
+                }
+            }
+            LogUtil.info("PreferencesManager", "DPI 已更新: $dpi")
+        } catch (e: IOException) {
+            LogUtil.error("PreferencesManager", "保存 DPI 失败", e)
         }
     }
 

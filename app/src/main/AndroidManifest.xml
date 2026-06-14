@@ -40,7 +40,6 @@
          应用特性声明
          ======================================================== -->
     <!-- 仅适配 arm64 设备 -->
-    <uses-feature android:name="android.hardware.screen.landscape" />
 
     <application
         android:name=".YCLApplication"
@@ -57,12 +56,12 @@
         tools:targetApi="36">
 
         <!-- ====================================================
-             主 Activity（强制横屏）
+             主 Activity（竖屏）
              ==================================================== -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:screenOrientation="landscape"
+            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTask"

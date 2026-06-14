@@ -14,9 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -36,11 +36,17 @@ import com.mymc.launcher.data.remote.RetrofitClient
 import com.mymc.launcher.service.version.VersionManager
 import com.mymc.launcher.ui.components.BottomNavBar
 import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.GlassCard
 import com.mymc.launcher.ui.components.scaleOnClick
+import com.mymc.launcher.util.FileUtil
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.URL
 
 /**
  * 资源类型枚举，用于筛选栏。
@@ -55,6 +61,16 @@ enum class ResourceTypeFilter(val label: String) {
 }
 
 /**
+ * 资源下载状态。
+ */
+enum class ResourceDownloadStatus {
+    NOT_STARTED,
+    DOWNLOADING,
+    COMPLETED,
+    FAILED
+}
+
+/**
  * 资源数据模型。
  */
 data class ResourceItem(
@@ -63,12 +79,13 @@ data class ResourceItem(
     val description: String,
     val type: String,
     val downloads: String,
-    val iconUrl: String = ""
+    val iconUrl: String = "",
+    val downloadStatus: ResourceDownloadStatus = ResourceDownloadStatus.NOT_STARTED,
+    val downloadProgress: Float = 0f
 )
 
 /**
  * 资源下载页面 ViewModel。
- * 使用 AndroidViewModel 获取 Application 上下文以访问服务。
  */
 class ResourceViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -239,6 +256,72 @@ class ResourceViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** 下载指定资源 */
+    fun downloadResource(resource: ResourceItem) {
+        viewModelScope.launch {
+            updateResourceStatus(resource.id, ResourceDownloadStatus.DOWNLOADING, 0f)
+            try {
+                val downloadUrl = fetchDownloadUrl(resource.id)
+                if (downloadUrl == null) {
+                    updateResourceStatus(resource.id, ResourceDownloadStatus.FAILED, 0f)
+                    return@launch
+                }
+
+                val app = getApplication<Application>()
+                val downloadsDir = File(app.filesDir, "downloads")
+                downloadsDir.mkdirs()
+                val fileName = "${resource.name}.jar"
+                val targetFile = File(downloadsDir, fileName)
+
+                val success = withContext(Dispatchers.IO) {
+                    FileUtil.downloadWithResume(
+                        downloadUrl = downloadUrl,
+                        targetFile = targetFile,
+                        onProgress = { downloaded, total ->
+                            val progress = if (total > 0) downloaded.toFloat() / total else 0f
+                            viewModelScope.launch {
+                                updateResourceStatus(resource.id, ResourceDownloadStatus.DOWNLOADING, progress)
+                            }
+                        }
+                    )
+                }
+
+                if (success) {
+                    updateResourceStatus(resource.id, ResourceDownloadStatus.COMPLETED, 1f)
+                } else {
+                    updateResourceStatus(resource.id, ResourceDownloadStatus.FAILED, 0f)
+                }
+            } catch (e: Exception) {
+                updateResourceStatus(resource.id, ResourceDownloadStatus.FAILED, 0f)
+            }
+        }
+    }
+
+    /** 从 Modrinth API 获取项目最新版本的下载 URL */
+    private suspend fun fetchDownloadUrl(projectId: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val response = RetrofitClient.modrinthApi.getProjectVersions(projectId)
+            if (response.isSuccessful && response.body() != null) {
+                val versions = response.body()!!
+                if (versions.isNotEmpty()) {
+                    val latestVersion = versions.first()
+                    if (latestVersion.files.isNotEmpty()) {
+                        return@withContext latestVersion.files.first().url
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun updateResourceStatus(id: String, status: ResourceDownloadStatus, progress: Float) {
+        _resourceList.value = _resourceList.value.map { item ->
+            if (item.id == id) item.copy(downloadStatus = status, downloadProgress = progress) else item
+        }
+    }
+
     fun getFilteredResources(): List<ResourceItem> {
         val all = _resourceList.value
         val filter = _selectedFilter.value
@@ -284,7 +367,6 @@ fun ResourceScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 资源类型筛选栏
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -299,7 +381,6 @@ fun ResourceScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 版本选择
             if (gameVersions.isNotEmpty()) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -315,39 +396,34 @@ fun ResourceScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // 资源列表
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(filteredResources) { resource ->
-                    ResourceCard(resource = resource)
+                    ResourceCard(
+                        resource = resource,
+                        onDownload = { viewModel.downloadResource(resource) }
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
         }
-    } // FadeInContent
+    }
     }
 }
 
 /**
- * 单个资源卡片组件。
+ * 单个资源卡片组件（毛玻璃风格 + 下载面板）。
  */
 @Composable
-private fun ResourceCard(resource: ResourceItem) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+private fun ResourceCard(
+    resource: ResourceItem,
+    onDownload: () -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -384,10 +460,49 @@ private fun ResourceCard(resource: ResourceItem) {
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray
                 )
-                Button(
-                    onClick = { /* TODO: 下载资源 */ }
-                ) {
-                    Text("下载")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 下载面板
+            when (resource.downloadStatus) {
+                ResourceDownloadStatus.DOWNLOADING -> {
+                    LinearProgressIndicator(
+                        progress = { resource.downloadProgress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${(resource.downloadProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                ResourceDownloadStatus.COMPLETED -> {
+                    Button(
+                        onClick = onDownload,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                    ) {
+                        Text("下载完成 ✓")
+                    }
+                }
+                ResourceDownloadStatus.FAILED -> {
+                    Button(
+                        onClick = onDownload,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
+                    ) {
+                        Text("重新下载")
+                    }
+                }
+                ResourceDownloadStatus.NOT_STARTED -> {
+                    Button(
+                        onClick = onDownload,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("下载")
+                    }
                 }
             }
         }
@@ -408,12 +523,17 @@ private fun ResourceTypeTag(type: String) {
         else -> Color(0xFF607D8B)
     }
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = tagColor.copy(alpha = 0.15f))
+    GlassCard(
+        cornerRadius = 8.dp,
+        blurRadius = 4.dp,
+        backgroundColor = tagColor.copy(alpha = 0.15f),
+        borderColor = tagColor.copy(alpha = 0.3f),
+        contentPadding = 4.dp,
+        enableClickAnimation = false
     ) {
         Text(
             text = type,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             color = tagColor,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium

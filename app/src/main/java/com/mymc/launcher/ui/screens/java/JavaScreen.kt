@@ -13,8 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -35,6 +33,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.service.java.JavaManager
 import com.mymc.launcher.ui.components.BottomNavBar
 import com.mymc.launcher.ui.components.FadeInContent
+import com.mymc.launcher.ui.components.GlassCard
 import com.mymc.launcher.ui.components.scaleOnClick
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,11 +44,8 @@ import kotlinx.coroutines.launch
  * Java 版本安装状态枚举。
  */
 enum class JavaInstallStatus {
-    /** 未安装 */
     NOT_INSTALLED,
-    /** 正在下载 */
     DOWNLOADING,
-    /** 已安装 */
     INSTALLED
 }
 
@@ -65,7 +61,6 @@ data class JavaVersionItem(
 
 /**
  * Java 环境管理页面 ViewModel。
- * 使用 AndroidViewModel 获取 Application 上下文以访问 JavaManager 单例。
  */
 class JavaViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -81,7 +76,6 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
     )
     val javaVersions: StateFlow<List<JavaVersionItem>> = _javaVersions.asStateFlow()
 
-    /** 自动匹配开关状态 */
     private val _autoMatchEnabled = MutableStateFlow(false)
     val autoMatchEnabled: StateFlow<Boolean> = _autoMatchEnabled.asStateFlow()
 
@@ -89,7 +83,6 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
         refreshStatus()
     }
 
-    /** 从 JavaManager 刷新所有版本安装状态 */
     fun refreshStatus() {
         viewModelScope.launch {
             val current = _javaVersions.value.toMutableList()
@@ -104,7 +97,6 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 开始下载指定 Java 版本 */
     fun startDownload(version: String) {
         viewModelScope.launch {
             updateStatus(version, JavaInstallStatus.DOWNLOADING, 0f)
@@ -121,7 +113,6 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 重新下载指定 Java 版本 */
     fun reDownload(version: String) {
         startDownload(version)
     }
@@ -152,10 +143,7 @@ fun JavaScreen(
 
     Scaffold(
         bottomBar = {
-            BottomNavBar(
-                currentRoute = currentRoute,
-                onNavigate = onNavigate
-            )
+            BottomNavBar(currentRoute = currentRoute, onNavigate = onNavigate)
         }
     ) { innerPadding ->
         FadeInContent {
@@ -189,7 +177,6 @@ fun JavaScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 自动匹配开关
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -209,12 +196,12 @@ fun JavaScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
-        } // FadeInContent
+        }
     }
 }
 
 /**
- * 单个 Java 版本卡片组件。
+ * 单个 Java 版本卡片组件（毛玻璃风格）。
  */
 @Composable
 private fun JavaVersionCard(
@@ -222,18 +209,8 @@ private fun JavaVersionCard(
     onDownload: () -> Unit,
     onReDownload: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

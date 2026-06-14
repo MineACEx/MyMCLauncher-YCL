@@ -1,6 +1,7 @@
 package com.mymc.launcher.data.remote.api
 
 import com.mymc.launcher.data.remote.dto.ModrinthSearchResponse
+import com.mymc.launcher.data.remote.dto.ModrinthVersion
 import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Path
@@ -48,5 +49,5 @@ interface ModrinthApi {
     @GET("project/{project_id}/version")
     suspend fun getProjectVersions(
         @Path("project_id") projectId: String
-    ): Response<Any>
+    ): Response<List<ModrinthVersion>>
 }
