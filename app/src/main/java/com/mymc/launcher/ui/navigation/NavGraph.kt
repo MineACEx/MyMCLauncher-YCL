@@ -50,7 +50,10 @@ fun YCLNavGraph(navController: NavHostController) {
         composable(Screen.Version.route) {
             VersionScreen(
                 onNavigate = onNavigate,
-                currentRoute = Screen.Version.route
+                currentRoute = Screen.Version.route,
+                onVersionClick = { versionId ->
+                    navController.navigate(Screen.VersionSettings.createRoute(versionId))
+                }
             )
         }
 

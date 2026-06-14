@@ -25,6 +25,9 @@ object RetrofitClient {
     /** Mojang 启动器元数据 API */
     private const val BASE_URL_MOJANG = "https://launchermeta.mojang.com/"
 
+    /** BMCLAPI 国内镜像 */
+    private const val BASE_URL_MOJANG_MIRROR = "https://bmclapi2.bangbang93.com/"
+
     /** Modrinth API v2 */
     private const val BASE_URL_MODRINTH = "https://api.modrinth.com/v2/"
 
@@ -78,9 +81,9 @@ object RetrofitClient {
 
     // ======================== Retrofit 实例 ========================
 
-    /** Mojang API Retrofit 实例 */
+    /** Mojang API（使用 BMCLAPI 国内镜像） */
     val mojangApi: MojangApi by lazy {
-        createRetrofit(BASE_URL_MOJANG).create(MojangApi::class.java)
+        createRetrofit(BASE_URL_MOJANG_MIRROR).create(MojangApi::class.java)
     }
 
     /** Modrinth API Retrofit 实例 */

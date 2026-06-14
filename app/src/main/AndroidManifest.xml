@@ -78,7 +78,7 @@
         <activity
             android:name=".ui.screens.account.OAuthRedirectActivity"
             android:exported="true"
-            android:screenOrientation="landscape"
+            android:screenOrientation="portrait"
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -96,6 +96,15 @@
             android:name=".service.download.DownloadService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- ====================================================
+             游戏启动 Activity
+             ==================================================== -->
+        <activity
+            android:name=".ui.activity.GameLaunchActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTask" />
 
         <!-- ====================================================
              游戏进程服务

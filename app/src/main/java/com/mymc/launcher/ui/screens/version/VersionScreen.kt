@@ -177,15 +177,49 @@ class VersionViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /** 下载/安装指定版本 */
-    fun downloadVersion(versionId: String) {
+    fun downloadVersion(versionId: String, versionType: String = "原版") {
         viewModelScope.launch {
             // 更新状态为下载中
             updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, 0f)
-            val success = versionManager.downloadVersion(versionId) { progress ->
-                viewModelScope.launch {
-                    updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, progress)
+
+            val success = when {
+                versionType.contains("Fabric", ignoreCase = true) -> {
+                    // 先下载原版，再安装 Fabric
+                    val baseOk = versionManager.downloadVersion(versionId) { progress ->
+                        viewModelScope.launch {
+                            updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, progress * 0.5f)
+                        }
+                    }
+                    if (!baseOk) false
+                    else versionManager.installFabric(versionId) { progress ->
+                        viewModelScope.launch {
+                            updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, 0.5f + progress * 0.5f)
+                        }
+                    }
+                }
+                versionType.contains("Forge", ignoreCase = true) -> {
+                    // 先下载原版，再安装 Forge
+                    val baseOk = versionManager.downloadVersion(versionId) { progress ->
+                        viewModelScope.launch {
+                            updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, progress * 0.5f)
+                        }
+                    }
+                    if (!baseOk) false
+                    else versionManager.installForge(versionId) { progress ->
+                        viewModelScope.launch {
+                            updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, 0.5f + progress * 0.5f)
+                        }
+                    }
+                }
+                else -> {
+                    versionManager.downloadVersion(versionId) { progress ->
+                        viewModelScope.launch {
+                            updateDownloadStatus(versionId, VersionDownloadStatus.DOWNLOADING, progress)
+                        }
+                    }
                 }
             }
+
             if (success) {
                 updateDownloadStatus(versionId, VersionDownloadStatus.INSTALLED, 1f)
             } else {
@@ -265,7 +299,7 @@ fun VersionScreen(
                     VersionCard(
                         item = item,
                         onClick = { onVersionClick(item.versionId) },
-                        onDownload = { viewModel.downloadVersion(item.versionId) }
+                        onDownload = { viewModel.downloadVersion(item.versionId, item.type) }
                     )
                 }
             }
