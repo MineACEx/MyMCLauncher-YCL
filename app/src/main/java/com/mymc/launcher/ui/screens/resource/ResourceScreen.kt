@@ -1,71 +1,55 @@
 package com.mymc.launcher.ui.screens.resource
 
-import androidx.compose.foundation.clickable
+import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import coil.compose.AsyncImage
-import com.mymc.launcher.data.remote.api.CurseForgeApi
-import com.mymc.launcher.data.remote.api.ModrinthApi
-import com.mymc.launcher.ui.components.BottomNavBar
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mymc.launcher.data.remote.RetrofitClient
 import com.mymc.launcher.service.version.VersionManager
+import com.mymc.launcher.ui.components.BottomNavBar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 资源分类 Tab 枚举。
+ * 资源类型枚举，用于筛选栏。
  */
-enum class ResourceTab(val label: String, val apiCategory: String) {
-    MOD("Mod", "mod"),
-    SHADER("光影", "shader"),
-    TEXTURE("材质", "resourcepack")
+enum class ResourceTypeFilter(val label: String) {
+    ALL("全部"),
+    MOD("Mod"),
+    RESOURCE_PACK("材质包"),
+    SHADER("光影"),
+    MODPACK("整合包"),
+    WORLD("地图")
 }
 
 /**
@@ -74,130 +58,195 @@ enum class ResourceTab(val label: String, val apiCategory: String) {
 data class ResourceItem(
     val id: String,
     val name: String,
-    val author: String,
-    val iconUrl: String,
-    val downloadCount: String,
-    val isInstalled: Boolean,
-    val isEnabled: Boolean = true
+    val description: String,
+    val type: String,
+    val downloads: String,
+    val iconUrl: String = ""
 )
 
 /**
- * 资源中心页面 ViewModel。
+ * 资源下载页面 ViewModel。
+ * 使用 AndroidViewModel 获取 Application 上下文以访问服务。
  */
-class ResourceViewModel : ViewModel() {
+class ResourceViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _selectedTab = MutableStateFlow(ResourceTab.MOD)
-    val selectedTab: StateFlow<ResourceTab> = _selectedTab.asStateFlow()
+    private val versionManager = VersionManager.getInstance(application)
 
     private val _resourceList = MutableStateFlow<List<ResourceItem>>(emptyList())
     val resourceList: StateFlow<List<ResourceItem>> = _resourceList.asStateFlow()
 
-    private val _selectedGameVersion = MutableStateFlow("")
-    val selectedGameVersion: StateFlow<String> = _selectedGameVersion.asStateFlow()
-
-    private val _selectedLoader = MutableStateFlow("")
-    val selectedLoader: StateFlow<String> = _selectedLoader.asStateFlow()
+    private val _selectedFilter = MutableStateFlow(ResourceTypeFilter.ALL)
+    val selectedFilter: StateFlow<ResourceTypeFilter> = _selectedFilter.asStateFlow()
 
     private val _gameVersions = MutableStateFlow<List<String>>(emptyList())
     val gameVersions: StateFlow<List<String>> = _gameVersions.asStateFlow()
 
-    private val loaders = listOf("全部", "Forge", "Fabric", "Quilt")
+    private val _selectedVersion = MutableStateFlow("")
+    val selectedVersion: StateFlow<String> = _selectedVersion.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
         loadGameVersions()
-        searchResources()
     }
 
     private fun loadGameVersions() {
         viewModelScope.launch {
-            _gameVersions.value = VersionManager.getInstalledVersions()
+            val versions = versionManager.scanLocalVersions().map { it.versionId }
+            _gameVersions.value = versions
+            if (versions.isNotEmpty() && _selectedVersion.value.isEmpty()) {
+                _selectedVersion.value = versions.first()
+            }
         }
     }
 
-    fun selectTab(tab: ResourceTab) {
-        _selectedTab.value = tab
+    fun selectFilter(filter: ResourceTypeFilter) {
+        _selectedFilter.value = filter
+    }
+
+    fun selectVersion(version: String) {
+        _selectedVersion.value = version
         searchResources()
     }
 
-    fun selectGameVersion(version: String) {
-        _selectedGameVersion.value = version
-        searchResources()
-    }
-
-    fun selectLoader(loader: String) {
-        _selectedLoader.value = loader
-        searchResources()
-    }
-
-    /** 从 Modrinth 和 CurseForge 搜索资源 */
     fun searchResources() {
         viewModelScope.launch {
-            val tab = _selectedTab.value
+            _isLoading.value = true
             try {
-                val modrinthResults = ModrinthApi.search(
-                    category = tab.apiCategory,
-                    gameVersion = _selectedGameVersion.value.ifBlank { null }
-                )
-                val curseforgeResults = CurseForgeApi.search(
-                    category = tab.apiCategory,
-                    gameVersion = _selectedGameVersion.value.ifBlank { null }
-                )
-                val merged = mergeResults(modrinthResults, curseforgeResults)
-                _resourceList.value = merged
+                val filter = _selectedFilter.value
+                val version = _selectedVersion.value
+
+                when (filter) {
+                    ResourceTypeFilter.MOD -> {
+                        val response = RetrofitClient.modrinthApi.search(
+                            query = "",
+                            facets = """[["versions:$version"],["project_type:mod"]]""",
+                            limit = 20
+                        )
+                        _resourceList.value = response.hits.map { hit ->
+                            ResourceItem(
+                                id = hit.projectId,
+                                name = hit.title,
+                                description = hit.description,
+                                type = "Mod",
+                                downloads = "${hit.downloads}",
+                                iconUrl = hit.iconUrl ?: ""
+                            )
+                        }
+                    }
+
+                    ResourceTypeFilter.MODPACK -> {
+                        val response = RetrofitClient.modrinthApi.search(
+                            query = "",
+                            facets = """[["versions:$version"],["project_type:modpack"]]""",
+                            limit = 20
+                        )
+                        _resourceList.value = response.hits.map { hit ->
+                            ResourceItem(
+                                id = hit.projectId,
+                                name = hit.title,
+                                description = hit.description,
+                                type = "整合包",
+                                downloads = "${hit.downloads}",
+                                iconUrl = hit.iconUrl ?: ""
+                            )
+                        }
+                    }
+
+                    ResourceTypeFilter.RESOURCE_PACK,
+                    ResourceTypeFilter.SHADER -> {
+                        val curseForgeType = when (filter) {
+                            ResourceTypeFilter.RESOURCE_PACK -> "resourcepack"
+                            ResourceTypeFilter.SHADER -> "shader"
+                            else -> "mod"
+                        }
+                        val response = RetrofitClient.curseForgeApi.searchMods(
+                            searchFilter = curseForgeType,
+                            index = 0,
+                            pageSize = 20
+                        )
+                        if (response.isSuccessful && response.body() != null) {
+                            _resourceList.value = response.body()!!.data.map { mod ->
+                                val fileSize = mod.latestFiles.firstOrNull()?.fileLength ?: 0L
+                                ResourceItem(
+                                    id = "${mod.id}",
+                                    name = mod.name,
+                                    description = mod.summary,
+                                    type = filter.label,
+                                    downloads = if (fileSize > 0) "${fileSize / 1024} KB" else "未知",
+                                    iconUrl = mod.logo?.url ?: ""
+                                )
+                            }
+                        }
+                    }
+
+                    ResourceTypeFilter.WORLD -> {
+                        val response = RetrofitClient.modrinthApi.search(
+                            query = "",
+                            facets = """[["versions:$version"],["categories:world"]]""",
+                            limit = 20
+                        )
+                        _resourceList.value = response.hits.map { hit ->
+                            ResourceItem(
+                                id = hit.projectId,
+                                name = hit.title,
+                                description = hit.description,
+                                type = "地图",
+                                downloads = "${hit.downloads}",
+                                iconUrl = hit.iconUrl ?: ""
+                            )
+                        }
+                    }
+
+                    ResourceTypeFilter.ALL -> {
+                        val response = RetrofitClient.modrinthApi.search(
+                            query = "",
+                            facets = """[["versions:$version"]]""",
+                            limit = 20
+                        )
+                        _resourceList.value = response.hits.map { hit ->
+                            ResourceItem(
+                                id = hit.projectId,
+                                name = hit.title,
+                                description = hit.description,
+                                type = "通用",
+                                downloads = "${hit.downloads}",
+                                iconUrl = hit.iconUrl ?: ""
+                            )
+                        }
+                    }
+                }
             } catch (e: Exception) {
-                // 搜索失败保持现有列表
+                _resourceList.value = emptyList()
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
-    /** 合并两个 API 的搜索结果，去重 */
-    private fun mergeResults(
-        modrinth: List<ResourceItem>,
-        curseforge: List<ResourceItem>
-    ): List<ResourceItem> {
-        val seen = mutableSetOf<String>()
-        val merged = mutableListOf<ResourceItem>()
-        for (item in modrinth + curseforge) {
-            if (seen.add(item.id)) {
-                merged.add(item)
-            }
-        }
-        return merged
-    }
-
-    fun toggleResourceEnabled(resourceId: String) {
-        val updated = _resourceList.value.map {
-            if (it.id == resourceId) it.copy(isEnabled = !it.isEnabled) else it
-        }
-        _resourceList.value = updated
-    }
-
-    fun deleteResource(resourceId: String) {
-        _resourceList.value = _resourceList.value.filter { it.id != resourceId }
+    fun getFilteredResources(): List<ResourceItem> {
+        val all = _resourceList.value
+        val filter = _selectedFilter.value
+        if (filter == ResourceTypeFilter.ALL) return all
+        return all.filter { it.type.equals(filter.label, ignoreCase = true) }
     }
 }
 
 /**
- * 资源中心页面 Composable。
- * 顶部 Tab 切换 Mod / 光影 / 材质，筛选行，资源网格列表。
- *
- * @param onNavigate       全局导航回调
- * @param currentRoute     当前路由
- * @param onResourceClick  资源详情点击回调
+ * 资源下载页面 Composable。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResourceScreen(
     onNavigate: (String) -> Unit,
     currentRoute: String,
-    onResourceClick: (String) -> Unit = {},
-    viewModel: ResourceViewModel = remember { ResourceViewModel() }
+    viewModel: ResourceViewModel = viewModel()
 ) {
-    val selectedTab by viewModel.selectedTab.collectAsState()
-    val resourceList by viewModel.resourceList.collectAsState()
-    val selectedGameVersion by viewModel.selectedGameVersion.collectAsState()
-    val selectedLoader by viewModel.selectedLoader.collectAsState()
+    val selectedFilter by viewModel.selectedFilter.collectAsState()
     val gameVersions by viewModel.gameVersions.collectAsState()
+    val selectedVersion by viewModel.selectedVersion.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val filteredResources = viewModel.getFilteredResources()
 
     Scaffold(
         bottomBar = {
@@ -208,109 +257,60 @@ fun ResourceScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .padding(horizontal = 16.dp)
         ) {
-            // 顶部 Tab 栏
-            ScrollableTabRow(
-                selectedTabIndex = ResourceTab.entries.indexOf(selectedTab),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                ResourceTab.entries.forEach { tab ->
-                    Tab(
-                        selected = selectedTab == tab,
-                        onClick = { viewModel.selectTab(tab) },
-                        text = { Text(tab.label) }
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // 筛选器行
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            Text(
+                text = "资源下载",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 资源类型筛选栏
+            LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // 游戏版本下拉
-                FilterDropdown(
-                    label = "游戏版本",
-                    selectedValue = selectedGameVersion.ifBlank { "全部" },
-                    options = listOf("全部") + gameVersions,
-                    onOptionSelected = { viewModel.selectGameVersion(if (it == "全部") "" else it) },
-                    modifier = Modifier.weight(1f)
-                )
-
-                // 加载器类型下拉
-                FilterDropdown(
-                    label = "加载器",
-                    selectedValue = selectedLoader.ifBlank { "全部" },
-                    options = listOf("全部", "Forge", "Fabric", "Quilt"),
-                    onOptionSelected = { viewModel.selectLoader(if (it == "全部") "" else it) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // 资源网格列表
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(resourceList) { item ->
-                    ResourceCard(
-                        item = item,
-                        onClick = { onResourceClick(item.id) },
-                        onToggleEnabled = { viewModel.toggleResourceEnabled(item.id) },
-                        onDelete = { viewModel.deleteResource(item.id) }
+                items(ResourceTypeFilter.entries.toList()) { filter ->
+                    FilterChip(
+                        selected = selectedFilter == filter,
+                        onClick = { viewModel.selectFilter(filter) },
+                        label = { Text(filter.label) }
                     )
                 }
             }
-        }
-    }
-}
 
-/**
- * 筛选器下拉组件。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FilterDropdown(
-    label: String,
-    selectedValue: String,
-    options: List<String>,
-    onOptionSelected: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
+            Spacer(modifier = Modifier.height(12.dp))
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        OutlinedTextField(
-            value = selectedValue,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = modifier.menuAnchor(),
-            textStyle = MaterialTheme.typography.bodySmall
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onOptionSelected(option)
-                        expanded = false
+            // 版本选择
+            if (gameVersions.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(gameVersions) { version ->
+                        FilterChip(
+                            selected = selectedVersion == version,
+                            onClick = { viewModel.selectVersion(version) },
+                            label = { Text(version) }
+                        )
                     }
-                )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
+
+            // 资源列表
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(filteredResources) { resource ->
+                    ResourceCard(resource = resource)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -319,87 +319,88 @@ private fun FilterDropdown(
  * 单个资源卡片组件。
  */
 @Composable
-private fun ResourceCard(
-    item: ResourceItem,
-    onClick: () -> Unit,
-    onToggleEnabled: () -> Unit,
-    onDelete: () -> Unit
-) {
+private fun ResourceCard(resource: ResourceItem) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            // 资源图标
-            AsyncImage(
-                model = item.iconUrl,
-                contentDescription = item.name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f),
-                contentScale = ContentScale.Crop
-            )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = resource.name,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                ResourceTypeTag(type = resource.type)
+            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (resource.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = resource.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    maxLines = 2
+                )
+            }
 
-            // 名称
-            Text(
-                text = item.name,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // 作者
-            Text(
-                text = item.author,
-                fontSize = 12.sp,
-                color = Color.Gray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // 下载量
-            Text(
-                text = "下载: ${item.downloadCount}",
-                fontSize = 11.sp,
-                color = Color.Gray
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // 本地已安装资源的控制按钮
-            if (item.isInstalled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "下载量: ${resource.downloads}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+                Button(
+                    onClick = { /* TODO: 下载资源 */ }
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (item.isEnabled) "启用" else "禁用",
-                            fontSize = 12.sp
-                        )
-                        Switch(
-                            checked = item.isEnabled,
-                            onCheckedChange = { onToggleEnabled() }
-                        )
-                    }
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = "删除",
-                            tint = Color(0xFFE53935)
-                        )
-                    }
+                    Text("下载")
                 }
             }
         }
+    }
+}
+
+/**
+ * 资源类型标签。
+ */
+@Composable
+private fun ResourceTypeTag(type: String) {
+    val tagColor = when (type.lowercase()) {
+        "mod" -> Color(0xFFD81B60)
+        "材质包" -> Color(0xFF4CAF50)
+        "光影" -> Color(0xFFFFC107)
+        "整合包" -> Color(0xFF2196F3)
+        "地图" -> Color(0xFF9C27B0)
+        else -> Color(0xFF607D8B)
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = tagColor.copy(alpha = 0.15f))
+    ) {
+        Text(
+            text = type,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            color = tagColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }

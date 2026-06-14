@@ -1,5 +1,6 @@
 package com.mymc.launcher.ui.screens.account
 
+import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -23,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,8 +30,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mymc.launcher.domain.model.AccountType
 import com.mymc.launcher.service.account.AccountManager
 import com.mymc.launcher.ui.components.BottomNavBar
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,8 +52,11 @@ data class CurrentAccountInfo(
 
 /**
  * 账号管理页面 ViewModel。
+ * 使用 AndroidViewModel 获取 Application 上下文以访问 AccountManager 单例。
  */
-class AccountViewModel : ViewModel() {
+class AccountViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val accountManager = AccountManager.getInstance(application)
 
     // 离线账号输入
     private val _offlineUsername = MutableStateFlow("")
@@ -89,15 +93,17 @@ class AccountViewModel : ViewModel() {
     /** 加载当前登录账号信息 */
     private fun loadCurrentAccount() {
         viewModelScope.launch {
-            val account = AccountManager.getCurrentAccount()
-            _currentAccount.value = if (account != null) {
-                CurrentAccountInfo(
-                    username = account.username,
-                    uuid = account.uuid,
-                    type = account.type
-                )
-            } else {
-                CurrentAccountInfo()
+            // 从 AccountManager 的 StateFlow 中同步获取当前账号
+            accountManager.currentAccount.collect { account ->
+                _currentAccount.value = if (account != null) {
+                    CurrentAccountInfo(
+                        username = account.username,
+                        uuid = account.uuid,
+                        type = account.accountType.name
+                    )
+                } else {
+                    CurrentAccountInfo()
+                }
             }
         }
     }
@@ -111,19 +117,49 @@ class AccountViewModel : ViewModel() {
         viewModelScope.launch {
             val name = _offlineUsername.value.trim()
             if (name.isBlank()) return@launch
-            AccountManager.loginOffline(name)
-            loadCurrentAccount()
+            accountManager.login(
+                type = AccountType.OFFLINE,
+                credentials = mapOf("username" to name)
+            ) { _, _ -> }
         }
     }
 
     /** 微软账号 OAuth 设备码流程 */
     fun startMicrosoftLogin() {
         viewModelScope.launch {
-            val result = AccountManager.startMicrosoftOAuth()
-            if (result != null) {
-                _microsoftDeviceCode.value = result.deviceCode
-                _microsoftVerifyUrl.value = result.verificationUri
-                _microsoftLoginMessage.value = "请在浏览器中打开以下链接并输入设备代码完成验证"
+            _microsoftLoginMessage.value = "正在请求设备码..."
+            accountManager.login(
+                type = AccountType.MICROSOFT,
+                credentials = emptyMap()
+            ) { account, errorMsg ->
+                if (account != null) {
+                    _microsoftLoginMessage.value = "登录成功: ${account.username}"
+                    _microsoftDeviceCode.value = ""
+                    _microsoftVerifyUrl.value = ""
+                } else if (errorMsg != null) {
+                    _microsoftLoginMessage.value = errorMsg
+                    // 尝试从进度消息中解析设备码和验证地址
+                    parseDeviceCodeFromMessage(errorMsg)
+                }
+            }
+        }
+    }
+
+    /** 从 AccountManager 回调消息中解析设备码和验证地址 */
+    private fun parseDeviceCodeFromMessage(message: String) {
+        // 格式: "请在浏览器中打开 https://... 并输入验证码 ABCDEF12"
+        val urlRegex = Regex("""(https?://[^\s]+)""")
+        val codeRegex = Regex("""验证码\s*([A-Z0-9]+)""")
+        
+        urlRegex.find(message)?.value?.let { url ->
+            _microsoftVerifyUrl.value = url
+        }
+        codeRegex.find(message)?.value?.let { fullMatch ->
+            _microsoftDeviceCode.value = fullMatch.removePrefix("验证码").trim()
+        } ?: run {
+            // 如果代码在消息末尾，直接提取
+            codeRegex.find(message)?.groupValues?.getOrNull(1)?.let { code ->
+                _microsoftDeviceCode.value = code
             }
         }
     }
@@ -145,22 +181,23 @@ class AccountViewModel : ViewModel() {
                 _littleSkinLoginMessage.value = "用户名和密码不能为空"
                 return@launch
             }
-            val success = AccountManager.loginLittleSkin(name, password)
-            if (success) {
-                _littleSkinLoginMessage.value = "LittleSkin 登录成功"
-                loadCurrentAccount()
-            } else {
-                _littleSkinLoginMessage.value = "LittleSkin 登录失败，请检查用户名和密码"
+            accountManager.login(
+                type = AccountType.LITTLESKIN,
+                credentials = mapOf("username" to name, "password" to password)
+            ) { account, errorMsg ->
+                if (account != null) {
+                    _littleSkinLoginMessage.value = "LittleSkin 登录成功"
+                } else {
+                    _littleSkinLoginMessage.value = errorMsg ?: "LittleSkin 登录失败，请检查用户名和密码"
+                }
             }
         }
     }
 
     /** 退出登录 */
     fun logout() {
-        viewModelScope.launch {
-            AccountManager.logout()
-            _currentAccount.value = CurrentAccountInfo()
-        }
+        accountManager.logout()
+        _currentAccount.value = CurrentAccountInfo()
     }
 }
 
@@ -175,7 +212,7 @@ class AccountViewModel : ViewModel() {
 fun AccountScreen(
     onNavigate: (String) -> Unit,
     currentRoute: String,
-    viewModel: AccountViewModel = remember { AccountViewModel() }
+    viewModel: AccountViewModel = viewModel()
 ) {
     val offlineUsername by viewModel.offlineUsername.collectAsState()
     val microsoftDeviceCode by viewModel.microsoftDeviceCode.collectAsState()

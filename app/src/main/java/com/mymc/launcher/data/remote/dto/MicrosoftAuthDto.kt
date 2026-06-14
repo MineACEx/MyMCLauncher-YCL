@@ -39,7 +39,9 @@ data class TokenRequest(
     @SerializedName("client_id")
     val clientId: String,
     @SerializedName("device_code")
-    val deviceCode: String,
+    val deviceCode: String? = null,
+    @SerializedName("refresh_token")
+    val refreshToken: String? = null,
     @SerializedName("grant_type")
     val grantType: String
 )

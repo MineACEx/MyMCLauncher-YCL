@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +55,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * 管理深色模式、主题色、背景图片、版本隔离等设置状态。
  */
 class SettingsViewModel : ViewModel() {
+
+    private val preferencesManager = PreferencesManager.getInstance(
+        com.mymc.launcher.YCLApplication.instance
+    )
 
     /** 深色模式开关 */
     private val _isDarkMode = MutableStateFlow(ThemeManager.isDarkMode.value ?: false)
@@ -74,6 +79,15 @@ class SettingsViewModel : ViewModel() {
     /** 应用版本号 */
     private val _appVersion = MutableStateFlow("1.0.0")
     val appVersion: StateFlow<String> = _appVersion.asStateFlow()
+
+    init {
+        // 从 DataStore 读取版本隔离状态
+        kotlinx.coroutines.MainScope().launch {
+            preferencesManager.versionIsolationFlow.collect { enabled ->
+                _versionIsolationEnabled.value = enabled
+            }
+        }
+    }
 
     fun toggleDarkMode(enabled: Boolean) {
         _isDarkMode.value = enabled
@@ -99,6 +113,9 @@ class SettingsViewModel : ViewModel() {
 
     fun toggleVersionIsolation(enabled: Boolean) {
         _versionIsolationEnabled.value = enabled
+        kotlinx.coroutines.MainScope().launch {
+            preferencesManager.setVersionIsolation(enabled)
+        }
     }
 }
 

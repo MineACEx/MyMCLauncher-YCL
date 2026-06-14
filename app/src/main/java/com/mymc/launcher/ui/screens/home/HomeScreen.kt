@@ -1,7 +1,8 @@
 package com.mymc.launcher.ui.screens.home
 
+import android.app.Application
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,114 +10,86 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.service.account.AccountManager
-import com.mymc.launcher.ui.components.BottomNavBar
-import com.mymc.launcher.ui.navigation.Screen
 import com.mymc.launcher.service.version.VersionManager
+import com.mymc.launcher.ui.components.BottomNavBar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 主页 ViewModel —— 管理版本列表、账号列表、内存设置等状态。
+ * 首页数据模型。
  */
-class HomeViewModel : ViewModel() {
+data class HomeData(
+    val installedVersions: List<String> = emptyList(),
+    val loggedInAccount: String = "",
+    val accountType: String = ""
+)
 
-    /** 已安装版本列表 */
-    private val _installedVersions = MutableStateFlow<List<String>>(emptyList())
-    val installedVersions: StateFlow<List<String>> = _installedVersions.asStateFlow()
+/**
+ * 首页 ViewModel。
+ * 使用 AndroidViewModel 获取 Application 上下文以访问服务。
+ */
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    /** 已登录账号列表 */
-    private val _loggedInAccounts = MutableStateFlow<List<String>>(emptyList())
-    val loggedInAccounts: StateFlow<List<String>> = _loggedInAccounts.asStateFlow()
+    private val versionManager = VersionManager.getInstance(application)
+    private val accountManager = AccountManager.getInstance(application)
 
-    /** 当前选中的版本 */
-    private val _selectedVersion = MutableStateFlow("")
-    val selectedVersion: StateFlow<String> = _selectedVersion.asStateFlow()
-
-    /** 当前选中的账号 */
-    private val _selectedAccount = MutableStateFlow("")
-    val selectedAccount: StateFlow<String> = _selectedAccount.asStateFlow()
-
-    /** 内存分配大小 (MB) */
-    private val _memoryMb = MutableStateFlow(2048f)
-    val memoryMb: StateFlow<Float> = _memoryMb.asStateFlow()
+    private val _homeData = MutableStateFlow(HomeData())
+    val homeData: StateFlow<HomeData> = _homeData.asStateFlow()
 
     init {
         refreshData()
     }
 
-    /** 刷新版本与账号数据 */
     fun refreshData() {
         viewModelScope.launch {
-            _installedVersions.value = VersionManager.getInstalledVersions()
-            _loggedInAccounts.value = AccountManager.getLoggedInAccounts()
+            val installed = versionManager.scanLocalVersions().map { it.versionId }
+            val account = accountManager.currentAccount.value
+            _homeData.value = HomeData(
+                installedVersions = installed,
+                loggedInAccount = account?.username ?: "",
+                accountType = account?.accountType?.name ?: ""
+            )
         }
-    }
-
-    fun selectVersion(version: String) {
-        _selectedVersion.value = version
-    }
-
-    fun selectAccount(account: String) {
-        _selectedAccount.value = account
-    }
-
-    fun updateMemory(memory: Float) {
-        _memoryMb.value = memory
     }
 }
 
 /**
- * 主界面 Composable。
- * 顶部标题、启动游戏按钮、版本/账号选择器、内存滑块、底部导航栏。
- *
- * @param onNavigate      全局导航回调，用于页面间跳转
- * @param currentRoute    当前路由，供底部导航栏高亮
+ * 首页 Composable。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigate: (String) -> Unit,
     currentRoute: String,
-    viewModel: HomeViewModel = remember { HomeViewModel() }
+    viewModel: HomeViewModel = viewModel()
 ) {
-    val installedVersions by viewModel.installedVersions.collectAsState()
-    val loggedInAccounts by viewModel.loggedInAccounts.collectAsState()
-    val selectedVersion by viewModel.selectedVersion.collectAsState()
-    val selectedAccount by viewModel.selectedAccount.collectAsState()
-    val memoryMb by viewModel.memoryMb.collectAsState()
+    val homeData by viewModel.homeData.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -127,209 +100,228 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 16.dp)
         ) {
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // 顶部标题
-            Text(
-                text = "YCL启动器",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 启动游戏按钮
-            Button(
-                onClick = {
-                    val version = selectedVersion
-                    if (version.isNotBlank()) {
-                        onNavigate(Screen.LaunchGame.createRoute(version))
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                ),
-                shape = MaterialTheme.shapes.large
-            ) {
-                Text(
-                    text = "启动游戏",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 版本选择器
-            VersionSelector(
-                versions = installedVersions,
-                selectedVersion = selectedVersion,
-                onVersionSelected = { viewModel.selectVersion(it) }
-            )
-
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 账号选择器
-            AccountSelector(
-                accounts = loggedInAccounts,
-                selectedAccount = selectedAccount,
-                onAccountSelected = { viewModel.selectAccount(it) }
+            // 欢迎横幅
+            WelcomeBanner(
+                accountName = homeData.loggedInAccount,
+                accountType = homeData.accountType
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 内存滑块
-            MemorySlider(
-                memoryMb = memoryMb,
-                onMemoryChanged = { viewModel.updateMemory(it) }
+            // 已安装版本
+            Text(
+                text = "已安装版本",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-    }
-}
+            Spacer(modifier = Modifier.height(12.dp))
 
-/**
- * 版本下拉选择器。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VersionSelector(
-    versions: List<String>,
-    selectedVersion: String,
-    onVersionSelected: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        OutlinedTextField(
-            value = selectedVersion.ifBlank { "选择已安装版本" },
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("游戏版本") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            versions.forEach { version ->
-                DropdownMenuItem(
-                    text = { Text(version) },
-                    onClick = {
-                        onVersionSelected(version)
-                        expanded = false
+            if (homeData.installedVersions.isEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "暂无已安装版本",
+                            color = Color.Gray,
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { onNavigate("version") }
+                        ) {
+                            Text("去下载")
+                        }
                     }
-                )
-            }
-        }
-    }
-}
-
-/**
- * 账号下拉选择器。
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AccountSelector(
-    accounts: List<String>,
-    selectedAccount: String,
-    onAccountSelected: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        OutlinedTextField(
-            value = selectedAccount.ifBlank { "选择已登录账号" },
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("账号") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            accounts.forEach { account ->
-                DropdownMenuItem(
-                    text = { Text(account) },
-                    onClick = {
-                        onAccountSelected(account)
-                        expanded = false
+                }
+            } else {
+                // 版本列表横向滚动
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(homeData.installedVersions) { versionId ->
+                        VersionChip(
+                            versionId = versionId,
+                            onClick = { onNavigate("version_settings/$versionId") }
+                        )
                     }
-                )
+                }
             }
-        }
-    }
-}
 
-/**
- * 内存分配滑块组件。
- * 范围 512MB - 8192MB，默认 2048MB。
- */
-@Composable
-private fun MemorySlider(
-    memoryMb: Float,
-    onMemoryChanged: (Float) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 快速操作
             Text(
-                text = "内存分配",
-                style = MaterialTheme.typography.bodyMedium
+                text = "快速操作",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                QuickActionCard(
+                    title = "版本管理",
+                    description = "下载和管理游戏版本",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onNavigate("version") }
+                )
+                QuickActionCard(
+                    title = "Java 环境",
+                    description = "配置 Java 运行时",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onNavigate("java") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                QuickActionCard(
+                    title = "账号管理",
+                    description = "登录和管理账号",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onNavigate("account") }
+                )
+                QuickActionCard(
+                    title = "资源下载",
+                    description = "Mod/光影/材质",
+                    modifier = Modifier.weight(1f),
+                    onClick = { onNavigate("resource") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * 欢迎横幅组件。
+ */
+@Composable
+private fun WelcomeBanner(
+    accountName: String,
+    accountType: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
             Text(
-                text = "${memoryMb.toInt()} MB",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "欢迎使用 YCL 启动器",
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            if (accountName.isNotBlank()) {
+                Text(
+                    text = "当前账号: $accountName ($accountType)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            } else {
+                Text(
+                    text = "尚未登录账号",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Slider(
-            value = memoryMb,
-            onValueChange = onMemoryChanged,
-            valueRange = 512f..8192f,
-            steps = 15,
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary
-            )
+/**
+ * 版本标签芯片。
+ */
+@Composable
+private fun VersionChip(
+    versionId: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
         )
+    ) {
+        Text(
+            text = versionId,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+/**
+ * 快速操作卡片。
+ */
+@Composable
+private fun QuickActionCard(
+    title: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+        .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = "512 MB", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-            Text(text = "8192 MB", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

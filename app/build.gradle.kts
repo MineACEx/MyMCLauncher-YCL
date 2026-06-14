@@ -51,16 +51,6 @@ android {
         }
     }
 
-    // 分包配置
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a")
-            isUniversalApk = false
-        }
-    }
-
     // 编译选项
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

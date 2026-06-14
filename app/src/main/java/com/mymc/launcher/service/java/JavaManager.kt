@@ -250,7 +250,7 @@ class JavaManager private constructor(private val context: Context) {
                 else -> "21"
             }
         } catch (e: Exception) {
-            LogUtil.warn(TAG, "自动匹配 Java 版本失败: $mcVersion，默认使用 Java 21", e)
+            LogUtil.error(TAG, "自动匹配 Java 版本失败: $mcVersion，默认使用 Java 21", e)
             "21"
         }
     }

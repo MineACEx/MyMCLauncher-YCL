@@ -35,12 +35,15 @@ class OAuthRedirectActivity : ComponentActivity() {
      * @param uri 包含授权码的回调 URI
      */
     private fun handleOAuthCallback(uri: Uri) {
+        // 获取 AccountManager 实例
+        val accountManager = AccountManager.getInstance(applicationContext)
+
         // 尝试从 query 参数中提取 code
         val authCode = uri.getQueryParameter("code")
 
         if (!authCode.isNullOrBlank()) {
             // 通知 AccountManager 完成微软 OAuth 登录流程
-            AccountManager.handleMicrosoftOAuthCode(authCode)
+            accountManager.handleMicrosoftOAuthCode(authCode)
         } else {
             // 可能从 fragment 中获取（隐式流程）
             val fragment = uri.fragment
@@ -48,7 +51,7 @@ class OAuthRedirectActivity : ComponentActivity() {
                 val fragmentUri = Uri.parse("?$fragment")
                 val fragmentCode = fragmentUri.getQueryParameter("code")
                 if (!fragmentCode.isNullOrBlank()) {
-                    AccountManager.handleMicrosoftOAuthCode(fragmentCode)
+                    accountManager.handleMicrosoftOAuthCode(fragmentCode)
                 }
             }
         }

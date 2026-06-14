@@ -1,6 +1,6 @@
 package com.mymc.launcher.ui.screens.java
 
-import androidx.compose.animation.AnimatedVisibility
+import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -24,15 +23,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.service.java.JavaManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,20 +44,14 @@ import kotlinx.coroutines.launch
 enum class JavaInstallStatus {
     /** 未安装 */
     NOT_INSTALLED,
-
     /** 正在下载 */
     DOWNLOADING,
-
     /** 已安装 */
     INSTALLED
 }
 
 /**
  * Java 版本数据模型。
- * @param version   版本号字符串，如 "Java 8"、"Java 17" 等
- * @param status    安装状态
- * @param fileSize  文件大小描述，如 "150 MB"
- * @param progress  下载进度 0f..1f，仅在 DOWNLOADING 状态下有效
  */
 data class JavaVersionItem(
     val version: String,
@@ -69,8 +62,11 @@ data class JavaVersionItem(
 
 /**
  * Java 环境管理页面 ViewModel。
+ * 使用 AndroidViewModel 获取 Application 上下文以访问 JavaManager 单例。
  */
-class JavaViewModel : ViewModel() {
+class JavaViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val javaManager = JavaManager.getInstance(application)
 
     private val _javaVersions = MutableStateFlow(
         listOf(
@@ -95,7 +91,8 @@ class JavaViewModel : ViewModel() {
         viewModelScope.launch {
             val current = _javaVersions.value.toMutableList()
             for (i in current.indices) {
-                val installed = JavaManager.isJavaInstalled(current[i].version)
+                val versionNum = current[i].version.removePrefix("Java ")
+                val installed = javaManager.verifyJavaInstallation(versionNum)
                 if (installed) {
                     current[i] = current[i].copy(status = JavaInstallStatus.INSTALLED)
                 }
@@ -108,7 +105,8 @@ class JavaViewModel : ViewModel() {
     fun startDownload(version: String) {
         viewModelScope.launch {
             updateStatus(version, JavaInstallStatus.DOWNLOADING, 0f)
-            JavaManager.downloadJava(version) { progress ->
+            val versionNum = version.removePrefix("Java ")
+            javaManager.downloadJava(versionNum) { progress ->
                 viewModelScope.launch {
                     if (progress >= 1f) {
                         updateStatus(version, JavaInstallStatus.INSTALLED, 1f)
@@ -139,18 +137,12 @@ class JavaViewModel : ViewModel() {
 
 /**
  * Java 环境管理页面 Composable。
- * 列表显示 Java8 / 17 / 21 / 25 四个版本卡片，
- * 每个卡片展示安装状态与对应操作按钮。
- * 底部提供"自动匹配"开关。
- *
- * @param onNavigate   全局导航回调
- * @param currentRoute 当前路由
  */
 @Composable
 fun JavaScreen(
     onNavigate: (String) -> Unit,
     currentRoute: String,
-    viewModel: JavaViewModel = remember { JavaViewModel() }
+    viewModel: JavaViewModel = viewModel()
 ) {
     val javaVersions by viewModel.javaVersions.collectAsState()
     val autoMatchEnabled by viewModel.autoMatchEnabled.collectAsState()

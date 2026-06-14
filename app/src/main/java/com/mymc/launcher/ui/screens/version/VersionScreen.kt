@@ -1,5 +1,6 @@
 package com.mymc.launcher.ui.screens.version
 
+import android.app.Application
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -24,18 +24,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.data.local.PreferencesManager
+import com.mymc.launcher.domain.model.GameVersionType
 import com.mymc.launcher.ui.components.BottomNavBar
 import com.mymc.launcher.service.version.VersionManager
+import com.mymc.launcher.util.FileUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,8 +66,12 @@ data class GameVersionItem(
 
 /**
  * 游戏版本管理页面 ViewModel。
+ * 使用 AndroidViewModel 获取 Application 上下文以访问 VersionManager 单例。
  */
-class VersionViewModel : ViewModel() {
+class VersionViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val versionManager = VersionManager.getInstance(application)
+    private val preferencesManager = PreferencesManager.getInstance(application)
 
     private val _versionList = MutableStateFlow<List<GameVersionItem>>(emptyList())
     val versionList: StateFlow<List<GameVersionItem>> = _versionList.asStateFlow()
@@ -73,26 +79,38 @@ class VersionViewModel : ViewModel() {
     private val _selectedFilter = MutableStateFlow(VersionTypeFilter.ALL)
     val selectedFilter: StateFlow<VersionTypeFilter> = _selectedFilter.asStateFlow()
 
-    private val _versionIsolationEnabled = MutableStateFlow(false)
+    private val _versionIsolationEnabled = MutableStateFlow(
+        PreferencesManager.DEFAULT_VERSION_ISOLATION
+    )
     val versionIsolationEnabled: StateFlow<Boolean> = _versionIsolationEnabled.asStateFlow()
 
     init {
+        // 监听版本隔离开关变化
+        viewModelScope.launch {
+            preferencesManager.versionIsolationFlow.collect { enabled ->
+                _versionIsolationEnabled.value = enabled
+            }
+        }
         refreshVersions()
-        _versionIsolationEnabled.value = PreferencesManager.isVersionIsolationEnabled()
     }
 
     /** 刷新版本列表 */
     fun refreshVersions() {
         viewModelScope.launch {
-            val rawList = VersionManager.getAvailableVersions()
-            _versionList.value = rawList.map { version ->
-                GameVersionItem(
-                    versionId = version.id,
-                    versionName = version.name,
-                    type = version.type,
-                    size = version.size,
-                    isInstalled = version.isInstalled
-                )
+            versionManager.fetchVersionList { versions ->
+                _versionList.value = versions.map { version ->
+                    GameVersionItem(
+                        versionId = version.versionId,
+                        versionName = "${version.type.name.lowercase().replaceFirstChar { it.uppercase() }} ${version.versionId}",
+                        type = when (version.type) {
+                            GameVersionType.VANILLA -> "原版"
+                            GameVersionType.FORGE -> "Forge"
+                            GameVersionType.FABRIC -> "Fabric"
+                        },
+                        size = if (version.fileSize > 0) FileUtil.formatFileSize(version.fileSize) else "",
+                        isInstalled = version.installed
+                    )
+                }
             }
         }
     }
@@ -100,8 +118,31 @@ class VersionViewModel : ViewModel() {
     /** 扫描本地版本 */
     fun scanLocalVersions() {
         viewModelScope.launch {
-            VersionManager.scanLocalVersions()
-            refreshVersions()
+            val localVersions = versionManager.scanLocalVersions()
+            // 将扫描到的本地版本合并到列表中
+            val existingIds = _versionList.value.map { it.versionId }.toSet()
+            val newLocalVersions = localVersions
+                .filter { it.versionId !in existingIds }
+                .map { version ->
+                    GameVersionItem(
+                        versionId = version.versionId,
+                        versionName = "${version.type.name.lowercase().replaceFirstChar { it.uppercase() }} ${version.versionId}",
+                        type = when (version.type) {
+                            GameVersionType.VANILLA -> "原版"
+                            GameVersionType.FORGE -> "Forge"
+                            GameVersionType.FABRIC -> "Fabric"
+                        },
+                        size = if (version.fileSize > 0) FileUtil.formatFileSize(version.fileSize) else "",
+                        isInstalled = version.installed
+                    )
+                }
+            _versionList.value = _versionList.value + newLocalVersions
+            // 同时更新已安装状态
+            val updatedList = _versionList.value.map { item ->
+                val localVersion = localVersions.find { it.versionId == item.versionId }
+                if (localVersion != null) item.copy(isInstalled = true) else item
+            }
+            _versionList.value = updatedList
         }
     }
 
@@ -111,7 +152,9 @@ class VersionViewModel : ViewModel() {
 
     fun toggleVersionIsolation(enabled: Boolean) {
         _versionIsolationEnabled.value = enabled
-        PreferencesManager.setVersionIsolationEnabled(enabled)
+        viewModelScope.launch {
+            preferencesManager.setVersionIsolation(enabled)
+        }
     }
 
     /** 获取筛选后的版本列表 */
@@ -125,18 +168,13 @@ class VersionViewModel : ViewModel() {
 
 /**
  * 游戏版本管理页面 Composable。
- * 顶部筛选栏、版本列表、扫描本地版本按钮、版本隔离开关。
- *
- * @param onNavigate      全局导航回调
- * @param currentRoute    当前路由
- * @param onVersionClick  版本卡片点击回调，传入 versionId
  */
 @Composable
 fun VersionScreen(
     onNavigate: (String) -> Unit,
     currentRoute: String,
     onVersionClick: (String) -> Unit = {},
-    viewModel: VersionViewModel = remember { VersionViewModel() }
+    viewModel: VersionViewModel = viewModel()
 ) {
     val selectedFilter by viewModel.selectedFilter.collectAsState()
     val versionIsolationEnabled by viewModel.versionIsolationEnabled.collectAsState()
@@ -220,7 +258,7 @@ fun VersionScreen(
 }
 
 /**
- * 筛选栏 —— 全部 / 原版 / Forge / Fabric。
+ * 筛选栏。
  */
 @Composable
 private fun FilterBar(

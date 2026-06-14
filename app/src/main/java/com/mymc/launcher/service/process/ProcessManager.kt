@@ -280,15 +280,7 @@ class ProcessManager {
         }
     }
 
-    /**
-     * 格式化命令列表为可打印的字符串
-     */
-    private fun formatCommand(command: List<String>): String {
-        return command.joinToString(" ") { arg ->
-            if (arg.contains(" ")) "\"$arg\"" else arg
-        }
     }
-}
 
 /**
  * 进程日志行密封类

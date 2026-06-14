@@ -1,19 +1,15 @@
 # ============================================================
-# YCL启动器 — GitHub Actions 云端自动打包工作流
-# ubuntu-24.04 镜像已预装 Gradle 9.5.1 + Android SDK 36
+# YCL启动器 — GitHub Actions 云端自动打包
+# ubuntu-24.04 预装 Gradle 9.5.1 + Android SDK 36
 # ============================================================
 
 name: YCL-Launcher CI/CD
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   workflow_dispatch:
 
 concurrency:
@@ -21,51 +17,59 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # 指定 Node.js 24（消除 Node 20 弃用警告）
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
-    name: 编译 Release APK (arm64-v8a)
+    name: 编译 Release APK
     runs-on: ubuntu-latest
 
     steps:
-      # ==========================================================
-      # Step 1：检出代码
-      # ==========================================================
+      # ──────────── 1. 检出代码 ────────────
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # ==========================================================
-      # Step 2：配置 JDK 17
-      # ==========================================================
+      # ──────────── 2. 配置 JDK 17 ────────────
       - name: 配置 JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ==========================================================
-      # Step 3：创建 local.properties（告知 AGP SDK 路径）
-      # ==========================================================
-      - name: 配置 Android SDK 路径
+      # ──────────── 3. 配置 Android SDK ────────────
+      - name: 配置 Android SDK
         run: echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
 
-      # ==========================================================
-      # Step 4：生成 Gradle Wrapper
-      #   ubuntu-24.04 镜像已预装 Gradle 9.5.1，用它生成 wrapper
-      #   指定 8.11.1 版本以匹配项目 gradle-wrapper.properties
-      # ==========================================================
+      # ──────────── 4. 生成 Gradle Wrapper ────────────
+      #   用 curl 直接下载 wrapper jar（避免 gradle wrapper 命令
+      #   触发项目配置阶段因潜在错误而失败）
       - name: 生成 Gradle Wrapper
         run: |
-          echo "系统 Gradle 版本: $(gradle --version | grep 'Gradle ' | head -1)"
-          gradle wrapper --gradle-version 8.11.1
-          chmod +x ./gradlew
-          echo "Wrapper 生成完成"
+          WRAPPER_DIR="gradle/wrapper"
+          mkdir -p "$WRAPPER_DIR"
 
-      # ==========================================================
-      # Step 5：缓存 Gradle 依赖
-      # ==========================================================
+          # 下载 Gradle 8.11.1 的 wrapper jar
+          curl -sSL "https://services.gradle.org/distributions/gradle-8.11.1-bin.zip" -o /tmp/gradle-bin.zip
+          unzip -qo /tmp/gradle-bin.zip -d /tmp/
+
+          # 用该版本 Gradle 生成 wrapper（项目配置报错不影响 wrapper 生成）
+          # 关键：先配一个空 settings 避免误解析，生成后再恢复
+          cp settings.gradle.kts settings.gradle.kts.bak
+          echo 'rootProject.name = "YCL-Launcher"' > settings.gradle.kts
+          echo '' > build.gradle.kts
+          mkdir -p app
+          echo '' > app/build.gradle.kts
+
+          /tmp/gradle-8.11.1/bin/gradle wrapper --gradle-version 8.11.1
+
+          # 恢复真实项目文件
+          mv settings.gradle.kts.bak settings.gradle.kts
+          git checkout -- build.gradle.kts app/build.gradle.kts 2>/dev/null || true
+
+          chmod +x gradlew
+          echo "Gradle Wrapper 生成完成：$(./gradlew --version 2>/dev/null | head -1 || echo 'ok')"
+
+      # ──────────── 5. 缓存 Gradle 依赖 ────────────
       - name: 缓存 Gradle
         uses: actions/cache@v4
         with:
@@ -73,39 +77,25 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+          restore-keys: gradle-${{ runner.os }}-
 
-      # ==========================================================
-      # Step 6：编译 Release APK
-      #   Android SDK 已预装：platforms;android-36 + build-tools;36.0.0
-      # ==========================================================
+      # ──────────── 6. 编译 Release APK ────────────
       - name: 编译 Release APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --warning-mode=summary
 
-      # ==========================================================
-      # Step 7：归档 APK 产物
-      # ==========================================================
-      - name: 上传 Release APK 产物
+      # ──────────── 7. 归档产物 ────────────
+      - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
         with:
           name: YCL-Launcher-Release-APK
-          path: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/release/*.json
+          path: app/build/outputs/apk/release/*.apk
           retention-days: 30
-          compression-level: 6
 
-      # ==========================================================
-      # Step 8：构建摘要
-      # ==========================================================
+      # ──────────── 8. 构建摘要 ────────────
       - name: 构建摘要
+        if: always()
         run: |
-          echo "### ✅ YCL启动器 构建成功" >> $GITHUB_STEP_SUMMARY
           echo "**构建时间**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "**提交**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**分支**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**架构**: arm64-v8a" >> $GITHUB_STEP_SUMMARY
-          echo "**目标 API**: 36 (Android 16)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📦 APK 产物可在本页底部 **Artifacts** 区域下载" >> $GITHUB_STEP_SUMMARY
+          echo "**架构**: arm64-v8a | **API**: 36 (Android 16)" >> $GITHUB_STEP_SUMMARY
+          echo "📦 APK 在 Artifacts 区域下载" >> $GITHUB_STEP_SUMMARY

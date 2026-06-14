@@ -43,8 +43,8 @@ fun YCLTheme(
             window.statusBarColor = colorScheme.primary.toArgb()
             window.navigationBarColor = colorScheme.background.toArgb()
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !isDarkMode
-                isAppearanceLightNavigationBars = !isDarkMode
+                isAppearanceLightStatusBars = !(isDarkMode ?: false)
+                isAppearanceLightNavigationBars = !(isDarkMode ?: false)
             }
         }
     }

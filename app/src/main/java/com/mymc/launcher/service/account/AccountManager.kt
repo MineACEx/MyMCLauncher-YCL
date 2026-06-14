@@ -153,6 +153,8 @@ class AccountManager private constructor(private val context: Context) {
                     _currentAccount.value = account
                     saveAccount(account)
                     onResult(account, null)
+                } else {
+                    onResult(null, "登录失败，请重试")
                 }
             } catch (e: Exception) {
                 LogUtil.error(TAG, "登录失败", e)
@@ -183,13 +185,68 @@ class AccountManager private constructor(private val context: Context) {
                         )
                     )
                 } catch (e: Exception) {
-                    LogUtil.warn(TAG, "Yggdrasil 登出请求失败（忽略）", e)
+                    LogUtil.error(TAG, "Yggdrasil 登出请求失败（忽略）", e)
                 }
             }
 
             // 清除本地存储
             clearSavedAccount()
             _currentAccount.value = null
+        }
+    }
+
+    /**
+     * 处理微软 OAuth 授权码回调。
+     * 当用户通过浏览器完成微软授权后，OAuthRedirectActivity 捕获回调 URL
+     * 中的授权码，然后调用此方法完成 token 兑换。
+     *
+     * 注意：当前主要使用 Device Code Flow，此方法为 Authorization Code Flow
+     * 预留。实际使用时需要配合微软 OAuth 的 authorization_code grant type。
+     *
+     * @param authCode 微软返回的授权码
+     */
+    fun handleMicrosoftOAuthCode(authCode: String) {
+        scope.launch {
+            LogUtil.info(TAG, "收到微软 OAuth 授权码: ${authCode.take(10)}...")
+            try {
+                // 使用授权码兑换 token
+                val tokenResponse = RetrofitClient.microsoftLoginApi.requestToken(
+                    url = MICROSOFT_TOKEN_URL,
+                    request = TokenRequest(
+                        clientId = MICROSOFT_CLIENT_ID,
+                        deviceCode = authCode,
+                        grantType = "authorization_code"
+                    )
+                )
+
+                if (!tokenResponse.isSuccessful || tokenResponse.body() == null) {
+                    LogUtil.error(TAG, "OAuth 授权码兑换 token 失败，HTTP ${tokenResponse.code()}")
+                    return@launch
+                }
+
+                val tokenData = tokenResponse.body()!!
+                LogUtil.info(TAG, "OAuth 授权码兑换成功，继续 XBL 认证...")
+
+                // 后续流程与 Device Code Flow 相同：XBL → XSTS → Minecraft → Profile
+                val xblToken = authenticateXBL(tokenData.accessToken) ?: return@launch
+                val (xstsToken, userHash) = authenticateXsts(xblToken) ?: return@launch
+                val mcToken = authenticateMinecraft(xstsToken, userHash) ?: return@launch
+                val profile = getMinecraftProfile(mcToken, "msa") ?: return@launch
+
+                val account = AccountInfo(
+                    uuid = profile.id,
+                    username = profile.name,
+                    accountType = AccountType.MICROSOFT,
+                    accessToken = mcToken,
+                    refreshToken = tokenData.refreshToken ?: ""
+                )
+
+                _currentAccount.value = account
+                saveAccount(account)
+                LogUtil.info(TAG, "微软 OAuth 登录成功: ${account.username}")
+            } catch (e: Exception) {
+                LogUtil.error(TAG, "OAuth 授权码登录异常", e)
+            }
         }
     }
 
@@ -373,6 +430,7 @@ class AccountManager private constructor(private val context: Context) {
             account
         } catch (e: Exception) {
             LogUtil.error(TAG, "微软账号登录异常", e)
+            onResult(null, e.message ?: "微软账号登录失败")
             null
         }
     }
@@ -465,7 +523,7 @@ class AccountManager private constructor(private val context: Context) {
                 url = MICROSOFT_TOKEN_URL,
                 request = TokenRequest(
                     clientId = MICROSOFT_CLIENT_ID,
-                    deviceCode = refreshToken,
+                    refreshToken = refreshToken,
                     grantType = "refresh_token"
                 )
             )
@@ -578,7 +636,7 @@ class AccountManager private constructor(private val context: Context) {
                 LogUtil.warn(TAG, "轮询令牌时收到未知响应: $errorBody")
                 kotlinx.coroutines.delay(pollInterval)
             } catch (e: Exception) {
-                LogUtil.warn(TAG, "轮询令牌时网络异常，重试中...", e)
+                LogUtil.error(TAG, "轮询令牌时网络异常，重试中...", e)
                 kotlinx.coroutines.delay(pollInterval)
             }
         }
@@ -623,29 +681,12 @@ class AccountManager private constructor(private val context: Context) {
      * @return Pair<XSTS Token, User Hash>，失败返回 null
      */
     private suspend fun authenticateXsts(xboxToken: String): Pair<String, String>? {
-        val response = RetrofitClient.xstsApi.authenticateXBox(
-            XBoxAuthRequest(
-                properties = XBoxAuthProperties(
-                    authMethod = "RPS",
-                    siteName = "user.auth.xboxlive.com",
-                    rpsTicket = "d=$xboxToken"
-                )
-            )
-        )
-
-        if (!response.isSuccessful || response.body() == null) {
-            LogUtil.error(TAG, "XSTS 用户认证失败，HTTP ${response.code()}")
-            // 尝试使用 XSTS authorize 端点
-            return authenticateXstsAuthorize(xboxToken)
-        }
-
-        val xboxAuth = response.body()!!
-        val uhs = xboxAuth.displayClaims.xui.firstOrNull()?.uhs ?: return null
-        return Pair(xboxAuth.token, uhs)
+        // 直接使用 XSTS authorize 端点（正确做法）
+        return authenticateXstsAuthorize(xboxToken)
     }
 
     /**
-     * XSTS authorize 备用端点
+     * XSTS authorize 端点
      */
     private suspend fun authenticateXstsAuthorize(xboxToken: String): Pair<String, String>? {
         val response = RetrofitClient.xstsApi.acquireXsts(
@@ -653,7 +694,7 @@ class AccountManager private constructor(private val context: Context) {
                 properties = XBoxAuthProperties(
                     authMethod = "RPS",
                     siteName = "user.auth.xboxlive.com",
-                    rpsTicket = xboxToken
+                    rpsTicket = "d=$xboxToken"
                 )
             )
         )
@@ -819,19 +860,21 @@ class AccountManager private constructor(private val context: Context) {
     }
 
     /**
-     * Base64 编码后存储到 DataStore（简化实现：直接写入文件）
+     * 加密后的共享偏好存储（用于持久化账号 Token）
      */
-    private var inMemoryStorage = mutableMapOf<String, String>()
+    private val accountPrefs by lazy {
+        context.getSharedPreferences("ycl_account_storage", android.content.Context.MODE_PRIVATE)
+    }
 
     private suspend fun saveToPrefs(key: String, value: String) {
-        inMemoryStorage[key] = value
-        // 在实际项目中，这里应调用 PreferencesManager 的扩展方法写入 DataStore
-        // 由于当前 PreferencesManager 未提供通用 key-value 存储，使用内存存储作为简化
-        LogUtil.info(TAG, "已存储加密值: $key")
+        withContext(Dispatchers.IO) {
+            accountPrefs.edit().putString(key, value).apply()
+        }
+        LogUtil.info(TAG, "已持久化加密值: $key")
     }
 
     private fun loadFromPrefs(key: String): String? {
-        return inMemoryStorage[key]
+        return accountPrefs.getString(key, null)
     }
 
     /**
