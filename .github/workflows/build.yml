@@ -20,6 +20,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # 指定 Node.js 24（消除 Node 20 弃用警告）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: 编译 Release APK (arm64-v8a)
@@ -42,7 +46,13 @@ jobs:
           distribution: 'temurin'
 
       # ==========================================================
-      # Step 3：生成 Gradle Wrapper
+      # Step 3：创建 local.properties（告知 AGP SDK 路径）
+      # ==========================================================
+      - name: 配置 Android SDK 路径
+        run: echo "sdk.dir=/usr/local/lib/android/sdk" > local.properties
+
+      # ==========================================================
+      # Step 4：生成 Gradle Wrapper
       #   ubuntu-24.04 镜像已预装 Gradle 9.5.1，用它生成 wrapper
       #   指定 8.11.1 版本以匹配项目 gradle-wrapper.properties
       # ==========================================================
@@ -54,7 +64,7 @@ jobs:
           echo "Wrapper 生成完成"
 
       # ==========================================================
-      # Step 4：缓存 Gradle 依赖
+      # Step 5：缓存 Gradle 依赖
       # ==========================================================
       - name: 缓存 Gradle
         uses: actions/cache@v4
@@ -67,14 +77,14 @@ jobs:
             gradle-${{ runner.os }}-
 
       # ==========================================================
-      # Step 5：编译 Release APK
+      # Step 6：编译 Release APK
       #   Android SDK 已预装：platforms;android-36 + build-tools;36.0.0
       # ==========================================================
       - name: 编译 Release APK
         run: ./gradlew assembleRelease
 
       # ==========================================================
-      # Step 6：归档 APK 产物
+      # Step 7：归档 APK 产物
       # ==========================================================
       - name: 上传 Release APK 产物
         uses: actions/upload-artifact@v4
@@ -87,7 +97,7 @@ jobs:
           compression-level: 6
 
       # ==========================================================
-      # Step 7：构建摘要
+      # Step 8：构建摘要
       # ==========================================================
       - name: 构建摘要
         run: |

@@ -3,8 +3,6 @@
 // 适配 Android 16 (API 36)，仅 arm64-v8a
 // ============================================================
 
-import com.android.build.api.dsl.ApplicationBuildType
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -69,10 +67,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -90,6 +84,13 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+    }
+}
+
+// Kotlin 编译器选项（Kotlin 2.4+ 新 DSL，替代已废弃的 kotlinOptions）
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
