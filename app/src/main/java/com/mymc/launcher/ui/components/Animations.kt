@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,9 +103,8 @@ object ListItemAnimation {
 @Composable
 fun AnimatedListItem(
     index: Int,
-    content: @Composable ColumnScope.() -> Unit
+    content: @Composable () -> Unit
 ) {
-    // 触发动画的布尔状态
     var visible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -126,9 +124,10 @@ fun AnimatedListItem(
                 durationMillis = ListItemAnimation.DURATION,
                 delayMillis = ListItemAnimation.BASE_DELAY + index * ListItemAnimation.STEP_DELAY
             )
-        ),
-        content = content
-    )
+        )
+    ) {
+        content()
+    }
 }
 
 // ============================================================
@@ -157,7 +156,8 @@ fun FadeInContent(content: @Composable () -> Unit) {
         enter = fadeIn(animationSpec = tween(300)) + scaleIn(
             initialScale = 0.98f,
             animationSpec = tween(300)
-        ),
-        content = content
-    )
+        )
+    ) {
+        content()
+    }
 }
