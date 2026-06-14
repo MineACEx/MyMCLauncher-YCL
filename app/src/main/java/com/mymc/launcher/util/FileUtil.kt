@@ -13,6 +13,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 
 /**
  * 文件处理工具类
@@ -181,6 +182,56 @@ object FileUtil {
             true
         } catch (e: Exception) {
             LogUtil.error("FileUtil", "tar.gz 解压失败: ${tarGzFile.absolutePath}", e)
+            false
+        }
+    }
+
+    /**
+     * 带进度回调的解压 tar.xz 文件（使用 XZ + Tar）
+     *
+     * @param tarXzFile     tar.xz 文件
+     * @param destDir       目标解压目录
+     * @param onProgress    进度回调 (entryName, completedCount)
+     * @return 解压成功返回 true
+     */
+    fun unTarXzWithProgress(
+        tarXzFile: File,
+        destDir: File,
+        onProgress: (entryName: String, completedCount: Int) -> Unit
+    ): Boolean {
+        if (!tarXzFile.exists() || !tarXzFile.isFile) {
+            LogUtil.warn("FileUtil", "tar.xz 文件不存在: ${tarXzFile.absolutePath}")
+            return false
+        }
+        if (!destDir.exists()) destDir.mkdirs()
+
+        return try {
+            var completedCount = 0
+            FileInputStream(tarXzFile).use { fis ->
+                XZCompressorInputStream(fis).use { xzis ->
+                    TarArchiveInputStream(xzis).use { tarIn ->
+                        var entry: TarArchiveEntry? = tarIn.nextTarEntry
+                        while (entry != null) {
+                            val entryFile = File(destDir, entry.name)
+                            if (entry.isDirectory) {
+                                entryFile.mkdirs()
+                            } else {
+                                ensureParentDir(entryFile)
+                                FileOutputStream(entryFile).use { fos ->
+                                    tarIn.copyTo(fos, BUFFER_SIZE)
+                                }
+                            }
+                            completedCount++
+                            onProgress(entry.name, completedCount)
+                            entry = tarIn.nextTarEntry
+                        }
+                    }
+                }
+            }
+            LogUtil.info("FileUtil", "tar.xz 解压完成（共 $completedCount 个条目）: ${tarXzFile.name}")
+            true
+        } catch (e: Exception) {
+            LogUtil.error("FileUtil", "tar.xz 解压失败: ${tarXzFile.absolutePath}", e)
             false
         }
     }

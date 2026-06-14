@@ -104,7 +104,9 @@ data class XuiClaim(
  */
 data class XstsResponse(
     @SerializedName("Token")
-    val token: String
+    val token: String,
+    @SerializedName("DisplayClaims")
+    val displayClaims: Map<String, Any>? = null
 )
 
 // ==================== Minecraft 认证 ====================

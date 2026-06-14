@@ -46,6 +46,9 @@ object ThemeManager {
     /** 自定义背景图片路径状态 */
     private val _backgroundPath = MutableStateFlow(PreferencesManager.DEFAULT_BACKGROUND_PATH)
 
+    /** 字体粗细状态（400 = Normal） */
+    private val _fontWeight = MutableStateFlow(PreferencesManager.DEFAULT_FONT_WEIGHT)
+
     /**
      * 暗色模式状态流（只读）
      *
@@ -68,6 +71,13 @@ object ThemeManager {
      * 空字符串表示无自定义背景
      */
     val backgroundPath: StateFlow<String> = _backgroundPath.asStateFlow()
+
+    /**
+     * 字体粗细状态流（只读）
+     *
+     * 字体粗细值，如 400 (Normal), 700 (Bold)
+     */
+    val fontWeight: StateFlow<Int> = _fontWeight.asStateFlow()
 
     // ==================== 初始化 ====================
 
@@ -118,6 +128,14 @@ object ThemeManager {
                     LogUtil.info(TAG, "背景路径已同步: $path")
                 }
             }
+
+            // 监听字体粗细变化
+            launch {
+                preferencesManager.fontWeightFlow.collect { weight ->
+                    _fontWeight.value = weight
+                    LogUtil.info(TAG, "字体粗细已同步: $weight")
+                }
+            }
         }
 
         LogUtil.info(TAG, "主题管理器初始化完成")
@@ -131,6 +149,11 @@ object ThemeManager {
      * @param darkMode null = 跟随系统, true = 强制暗色, false = 强制亮色
      */
     fun setDarkMode(darkMode: Boolean?) {
+        if (!initialized) {
+            LogUtil.warn(TAG, "主题管理器未初始化，跳过设置暗色模式")
+            _isDarkMode.value = darkMode
+            return
+        }
         _isDarkMode.value = darkMode
         scope.launch {
             val modeStr = when (darkMode) {
@@ -161,6 +184,11 @@ object ThemeManager {
      * @param color 十六进制颜色字符串，如 "#FF6200EE"
      */
     fun setThemeColor(color: String) {
+        if (!initialized) {
+            LogUtil.warn(TAG, "主题管理器未初始化，跳过设置主题色")
+            _themeColor.value = color
+            return
+        }
         _themeColor.value = color
         scope.launch {
             preferencesManager.setThemeColor(color)
@@ -174,6 +202,11 @@ object ThemeManager {
      * @param path 背景图片的绝对路径，空字符串表示清除自定义背景
      */
     fun setBackgroundPath(path: String) {
+        if (!initialized) {
+            LogUtil.warn(TAG, "主题管理器未初始化，跳过设置背景路径")
+            _backgroundPath.value = path
+            return
+        }
         _backgroundPath.value = path
         scope.launch {
             preferencesManager.setBackgroundPath(path)
@@ -186,6 +219,24 @@ object ThemeManager {
      */
     fun clearBackground() {
         setBackgroundPath("")
+    }
+
+    /**
+     * 设置字体粗细
+     *
+     * @param weight 字体粗细值，如 400 (Normal), 700 (Bold)
+     */
+    fun setFontWeight(weight: Int) {
+        if (!initialized) {
+            LogUtil.warn(TAG, "主题管理器未初始化，跳过设置字体粗细")
+            _fontWeight.value = weight
+            return
+        }
+        _fontWeight.value = weight
+        scope.launch {
+            preferencesManager.setFontWeight(weight)
+        }
+        LogUtil.info(TAG, "字体粗细已设置: $weight")
     }
 
     // ==================== 查询方法 ====================

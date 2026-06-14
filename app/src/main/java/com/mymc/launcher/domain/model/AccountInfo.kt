@@ -30,5 +30,6 @@ data class AccountInfo(
     val accessToken: String,
     val accountType: AccountType,
     val isLoggedIn: Boolean = false,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    val refreshToken: String? = null
 )

@@ -256,12 +256,17 @@ class DownloadManager(
                 val contentRange = connection.getHeaderField("Content-Range")
                 if (contentRange != null) {
                     val parts = contentRange.split("/")
-                    parts.lastOrNull()?.toLongOrNull() ?: connection.contentLength.toLong() + existingLength
+                    parts.lastOrNull()?.toLongOrNull() ?: let {
+                        val cl = connection.contentLength
+                        if (cl >= 0) cl.toLong() + existingLength else -1L
+                    }
                 } else {
-                    connection.contentLength.toLong() + existingLength
+                    val cl = connection.contentLength
+                    if (cl >= 0) cl.toLong() + existingLength else -1L
                 }
             } else {
-                connection.contentLength.toLong()
+                val cl = connection.contentLength
+                if (cl >= 0) cl.toLong() else -1L
             }
 
             val inputStream: InputStream = connection.inputStream

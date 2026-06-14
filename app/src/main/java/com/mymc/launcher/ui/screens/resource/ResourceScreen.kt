@@ -343,6 +343,7 @@ fun ResourceScreen(
     val gameVersions by viewModel.gameVersions.collectAsState()
     val selectedVersion by viewModel.selectedVersion.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val resourceList by viewModel.resourceList.collectAsState()
     val filteredResources = viewModel.getFilteredResources()
 
     Scaffold(

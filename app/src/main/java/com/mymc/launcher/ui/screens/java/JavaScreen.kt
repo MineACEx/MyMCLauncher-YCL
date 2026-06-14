@@ -31,6 +31,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.service.java.JavaManager
+import com.mymc.launcher.service.java.JavaEnvironmentManager
 import com.mymc.launcher.ui.components.BottomNavBar
 import com.mymc.launcher.ui.components.FadeInContent
 import com.mymc.launcher.ui.components.GlassCard
@@ -65,6 +66,7 @@ data class JavaVersionItem(
 class JavaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val javaManager = JavaManager.getInstance(application)
+    private val javaEnvManager = JavaEnvironmentManager.getInstance(application)
 
     private val _javaVersions = MutableStateFlow(
         listOf(
@@ -79,8 +81,38 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
     private val _autoMatchEnabled = MutableStateFlow(false)
     val autoMatchEnabled: StateFlow<Boolean> = _autoMatchEnabled.asStateFlow()
 
+    /** 是否正在从 APK 提取 Java */
+    private val _isExtracting = MutableStateFlow(false)
+    val isExtracting: StateFlow<Boolean> = _isExtracting.asStateFlow()
+
+    /** 提取进度消息 */
+    private val _extractMessage = MutableStateFlow("")
+    val extractMessage: StateFlow<String> = _extractMessage.asStateFlow()
+
     init {
+        // 启动时自动检测已安装的 Java 环境
         refreshStatus()
+        // 检测嵌入式 Java 是否需要提取
+        checkEmbeddedJava()
+    }
+
+    /**
+     * 检测嵌入式 Java 运行时环境
+     * 参照 FCL：第一次启动时从 APK assets 中提取嵌入式 JRE
+     */
+    private fun checkEmbeddedJava() {
+        viewModelScope.launch {
+            val current = _javaVersions.value.toMutableList()
+            for (i in current.indices) {
+                val versionNum = current[i].version.removePrefix("Java ")
+                // 检查是否已通过嵌入式安装
+                val installed = javaEnvManager.isJavaInstalled(versionNum)
+                if (installed) {
+                    current[i] = current[i].copy(status = JavaInstallStatus.INSTALLED)
+                }
+            }
+            _javaVersions.value = current
+        }
     }
 
     fun refreshStatus() {
@@ -88,12 +120,48 @@ class JavaViewModel(application: Application) : AndroidViewModel(application) {
             val current = _javaVersions.value.toMutableList()
             for (i in current.indices) {
                 val versionNum = current[i].version.removePrefix("Java ")
-                val installed = javaManager.verifyJavaInstallation(versionNum)
-                if (installed) {
+                // 检查嵌入式安装
+                val embeddedInstalled = javaEnvManager.isJavaInstalled(versionNum)
+                // 检查下载安装
+                val downloadedInstalled = javaManager.verifyJavaInstallation(versionNum)
+                if (embeddedInstalled || downloadedInstalled) {
                     current[i] = current[i].copy(status = JavaInstallStatus.INSTALLED)
                 }
             }
             _javaVersions.value = current
+        }
+    }
+
+    /**
+     * 从 APK 嵌入式资源提取 Java 运行时
+     * 优先使用嵌入式 JRE（卡刷包方式），失败则回退到网络下载
+     */
+    fun extractFromAssets(version: String) {
+        if (_isExtracting.value) return
+        _isExtracting.value = true
+        _extractMessage.value = "正在从 APK 提取 Java $version 运行时..."
+
+        viewModelScope.launch {
+            updateStatus(version, JavaInstallStatus.DOWNLOADING, 0f)
+            val versionNum = version.removePrefix("Java ")
+            try {
+                val success = javaEnvManager.extractJavaRuntime(versionNum) { progress ->
+                    updateStatus(version, JavaInstallStatus.DOWNLOADING, progress)
+                    _extractMessage.value = "解压中... ${(progress * 100).toInt()}%"
+                }
+                if (success) {
+                    updateStatus(version, JavaInstallStatus.INSTALLED, 1f)
+                    _extractMessage.value = "Java $versionNum 提取完成！"
+                } else {
+                    // 嵌入式提取失败，回退到网络下载
+                    _extractMessage.value = "内嵌资源不可用，尝试网络下载..."
+                    startDownload(version)
+                }
+            } catch (e: Exception) {
+                _extractMessage.value = "提取失败: ${e.message}，尝试网络下载..."
+                startDownload(version)
+            }
+            _isExtracting.value = false
         }
     }
 
@@ -140,6 +208,8 @@ fun JavaScreen(
 ) {
     val javaVersions by viewModel.javaVersions.collectAsState()
     val autoMatchEnabled by viewModel.autoMatchEnabled.collectAsState()
+    val isExtracting by viewModel.isExtracting.collectAsState()
+    val extractMessage by viewModel.extractMessage.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -161,7 +231,24 @@ fun JavaScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 提取状态提示
+            if (extractMessage.isNotBlank()) {
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = Color(0xFF1B5E20).copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = extractMessage,
+                        fontSize = 13.sp,
+                        color = Color(0xFF81C784)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -170,7 +257,8 @@ fun JavaScreen(
                     JavaVersionCard(
                         item = item,
                         onDownload = { viewModel.startDownload(item.version) },
-                        onReDownload = { viewModel.reDownload(item.version) }
+                        onReDownload = { viewModel.reDownload(item.version) },
+                        onExtract = { viewModel.extractFromAssets(item.version) }
                     )
                 }
             }
@@ -207,7 +295,8 @@ fun JavaScreen(
 private fun JavaVersionCard(
     item: JavaVersionItem,
     onDownload: () -> Unit,
-    onReDownload: () -> Unit
+    onReDownload: () -> Unit,
+    onExtract: () -> Unit = {}
 ) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -258,11 +347,28 @@ private fun JavaVersionCard(
                 }
 
                 JavaInstallStatus.NOT_INSTALLED -> {
-                    Button(
-                        onClick = onDownload,
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("下载")
+                        Button(
+                            onClick = onExtract,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF1B5E20)
+                            )
+                        ) {
+                            Text("从APK提取")
+                        }
+                        Button(
+                            onClick = onDownload,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            )
+                        ) {
+                            Text("从网络下载")
+                        }
                     }
                 }
 

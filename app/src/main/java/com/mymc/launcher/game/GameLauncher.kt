@@ -96,7 +96,7 @@ object GameLauncher {
                 putExtra("version_id", version.versionId)
                 putExtra("main_class", mainClass)
                 putExtra("classpath", classpath)
-                putExtra("launch_args", launchArgs.toTypedArray())
+                putExtra("launch_args", launchArgs)
                 putExtra("game_dir", runDir.absolutePath)
                 putExtra("assets_dir", assetsDir.absolutePath)
                 putExtra("asset_index", assetIndexId)
@@ -174,9 +174,15 @@ object GameLauncher {
     ): Array<String> {
         val args = mutableListOf<String>()
 
-        // JVM 参数
-        args.add("-Xmx2G")
-        args.add("-XX:+UseG1GC")
+        // JVM 参数（使用传入的 javaArgs，解析空格分隔的参数）
+        if (javaArgs.isNotBlank()) {
+            javaArgs.split("\\s+".toRegex()).forEach { arg ->
+                if (arg.isNotBlank()) args.add(arg)
+            }
+        } else {
+            args.add("-Xmx2G")
+            args.add("-XX:+UseG1GC")
+        }
         args.add("-Djava.library.path=${gameDir.absolutePath}/natives")
         args.add("-Dminecraft.client.jar=${gameDir.absolutePath}/${version.versionId}.jar")
         args.add("-Duser.home=${gameDir.absolutePath}")

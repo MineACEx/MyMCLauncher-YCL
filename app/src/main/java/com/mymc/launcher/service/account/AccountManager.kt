@@ -240,7 +240,8 @@ class AccountManager private constructor(private val context: Context) {
                     accountType = AccountType.MICROSOFT,
                     accessToken = mcToken,
                     isLoggedIn = true,
-                    avatarUrl = "https://crafatar.com/avatars/${profile.id}"
+                    avatarUrl = "https://crafatar.com/avatars/${profile.id}",
+                    refreshToken = tokenData.refreshToken
                 )
 
                 _currentAccount.value = account
@@ -425,7 +426,8 @@ class AccountManager private constructor(private val context: Context) {
                 accessToken = mcToken,
                 accountType = AccountType.MICROSOFT,
                 isLoggedIn = true,
-                avatarUrl = "https://crafatar.com/avatars/${profile.id}"
+                avatarUrl = "https://crafatar.com/avatars/${profile.id}",
+                refreshToken = tokenResponse.refreshToken
             )
 
             LogUtil.info(TAG, "微软账号登录成功: ${profile.name}")
@@ -707,7 +709,20 @@ class AccountManager private constructor(private val context: Context) {
         }
 
         val xstsToken = response.body()!!.token
-        return Pair(xstsToken, "")
+        // 从 XSTS 响应中提取 userHash（DisplayClaims.xui[0].uhs）
+        val userHash = try {
+            val body = response.body()!!
+            val dc = body.displayClaims
+            if (dc != null) {
+                val xuiList = dc["xui"] as? List<*>
+                val firstItem = xuiList?.firstOrNull() as? Map<*, *>
+                firstItem?.get("uhs")?.toString() ?: ""
+            } else ""
+        } catch (e: Exception) {
+            LogUtil.warn(TAG, "无法从 XSTS 响应中提取 userHash: ${e.message}")
+            ""
+        }
+        return Pair(xstsToken, userHash)
     }
 
     /**
@@ -802,6 +817,9 @@ class AccountManager private constructor(private val context: Context) {
                 saveEncryptedValue(KEY_ACCESS_TOKEN, account.accessToken)
                 saveEncryptedValue(KEY_AVATAR_URL, account.avatarUrl ?: "")
                 saveEncryptedValue(KEY_IS_LOGGED_IN, "true")
+                if (!account.refreshToken.isNullOrBlank()) {
+                    saveEncryptedValue(KEY_REFRESH_TOKEN, account.refreshToken)
+                }
                 LogUtil.info(TAG, "账号信息已加密保存")
             } catch (e: Exception) {
                 LogUtil.error(TAG, "保存账号信息失败", e)

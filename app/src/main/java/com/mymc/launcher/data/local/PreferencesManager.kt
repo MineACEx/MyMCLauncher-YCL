@@ -75,6 +75,9 @@ class PreferencesManager private constructor(private val context: Context) {
 
         /** DPI 最大值 */
         const val MAX_DPI = 640
+
+        /** 默认字体粗细（400 = Normal） */
+        const val DEFAULT_FONT_WEIGHT = 400
     }
 
     // ==================== 偏好设置键定义 ====================
@@ -86,6 +89,7 @@ class PreferencesManager private constructor(private val context: Context) {
         val JVM_ARGS = stringPreferencesKey("jvm_args")
         val BACKGROUND_PATH = stringPreferencesKey("background_path")
         val DPI = stringPreferencesKey("dpi")
+        val FONT_WEIGHT = stringPreferencesKey("font_weight")
     }
 
     // ==================== 数据流 ====================
@@ -172,6 +176,20 @@ class PreferencesManager private constructor(private val context: Context) {
         }
         .map { preferences ->
             (preferences[Keys.DPI] ?: DEFAULT_DPI.toString()).toIntOrNull() ?: DEFAULT_DPI
+        }
+
+    /**
+     * 字体粗细数据流
+     *
+     * @return Flow<Int> 字体粗细值，如 400 (Normal), 700 (Bold)
+     */
+    val fontWeightFlow: Flow<Int> = context.dataStore.data
+        .catch { exception ->
+            LogUtil.error("PreferencesManager", "读取字体粗细失败", exception)
+            emit(emptyPreferences())
+        }
+        .map { preferences ->
+            (preferences[Keys.FONT_WEIGHT] ?: DEFAULT_FONT_WEIGHT.toString()).toIntOrNull() ?: DEFAULT_FONT_WEIGHT
         }
 
     // ==================== 写入方法 ====================
@@ -281,6 +299,22 @@ class PreferencesManager private constructor(private val context: Context) {
             LogUtil.info("PreferencesManager", "DPI 已更新: $dpi")
         } catch (e: IOException) {
             LogUtil.error("PreferencesManager", "保存 DPI 失败", e)
+        }
+    }
+
+    /**
+     * 设置字体粗细
+     *
+     * @param weight 字体粗细值，如 400 (Normal), 700 (Bold)
+     */
+    suspend fun setFontWeight(weight: Int) {
+        try {
+            context.dataStore.edit { preferences ->
+                preferences[Keys.FONT_WEIGHT] = weight.toString()
+            }
+            LogUtil.info("PreferencesManager", "字体粗细已更新: $weight")
+        } catch (e: IOException) {
+            LogUtil.error("PreferencesManager", "保存字体粗细失败", e)
         }
     }
 

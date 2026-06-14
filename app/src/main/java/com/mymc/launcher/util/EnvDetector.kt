@@ -27,8 +27,9 @@ object EnvDetector {
      */
     fun detectEnvironment(): EnvType {
         cachedType?.let { return it }
-        cachedType = detectInternal()
-        return cachedType!!
+        val result = detectInternal()
+        cachedType = result
+        return result
     }
 
     private fun detectInternal(): EnvType {

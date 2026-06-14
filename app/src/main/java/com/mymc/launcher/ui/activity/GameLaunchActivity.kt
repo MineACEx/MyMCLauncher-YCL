@@ -1,8 +1,8 @@
 package com.mymc.launcher.ui.activity
 
 import android.os.Bundle
-import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,7 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -20,21 +21,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mymc.launcher.ui.components.GlassCard
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 
 /**
  * 游戏启动 Activity
@@ -66,20 +65,16 @@ class GameLaunchActivity : ComponentActivity() {
         val gameDir = intent.getStringExtra("game_dir") ?: ""
         val assetsDir = intent.getStringExtra("assets_dir") ?: ""
 
-        setContentView(
+        setContent {
             GameLaunchScreen(
                 versionId = versionId,
                 onLaunch = { onLog ->
                     launchGame(versionId, mainClass, classpath, launchArgs, gameDir, onLog)
                 },
-                onStop = {
-                    stopGame()
-                },
-                onClose = {
-                    finish()
-                }
+                onStop = { stopGame() },
+                onClose = { finish() }
             )
-        )
+        }
     }
 
     private fun launchGame(
@@ -95,13 +90,14 @@ class GameLaunchActivity : ComponentActivity() {
 
         Thread {
             try {
-                onLog("====== YCL 启动器 - 游戏启动 ======")
-                onLog("版本: $versionId")
-                onLog("主类: $mainClass")
-                onLog("Classpath 条目数: ${classpath.size}")
-                onLog("游戏目录: $gameDir")
-                onLog("=====================================")
-                onLog("")
+                val logOnUi: (String) -> Unit = { msg -> runOnUiThread { onLog(msg) } }
+                logOnUi("====== YCL 启动器 - 游戏启动 ======")
+                logOnUi("版本: $versionId")
+                logOnUi("主类: $mainClass")
+                logOnUi("Classpath 条目数: ${classpath.size}")
+                logOnUi("游戏目录: $gameDir")
+                logOnUi("=====================================")
+                logOnUi("")
 
                 // 确保游戏目录存在
                 val dir = File(gameDir)
@@ -114,19 +110,16 @@ class GameLaunchActivity : ComponentActivity() {
                 cmdLine.add("-cp")
                 cmdLine.add(classpath.joinToString(File.pathSeparator))
 
-                onLog("启动参数: ${cmdLine.joinToString(" ")}")
-                onLog("")
+                logOnUi("启动参数: ${cmdLine.joinToString(" ")}")
+                logOnUi("")
 
-                // 注意：在 Android 上无法直接运行 Java/Minecraft
-                // 真正的运行需要 JNI + OpenGL 桥接（参照 FCL FCLauncher + Pojav）
-                // 此处仅模拟启动流程
-                onLog("[信息] Android 平台运行 Minecraft 需要额外的原生库（JNI + OpenGL 桥接）")
-                onLog("[信息] 本启动器已完成版本下载、Library 管理、Asset 资源准备")
-                onLog("[信息] 如需完整运行游戏，请参阅 FCL/PojavLauncher 的原生集成方案")
-                onLog("")
-                onLog("[完毕] 游戏文件已就绪，版本: $versionId")
+                logOnUi("[信息] Android 平台运行 Minecraft 需要额外的原生库（JNI + OpenGL 桥接）")
+                logOnUi("[信息] 本启动器已完成版本下载、Library 管理、Asset 资源准备")
+                logOnUi("[信息] 如需完整运行游戏，请参阅 FCL/PojavLauncher 的原生集成方案")
+                logOnUi("")
+                logOnUi("[完毕] 游戏文件已就绪，版本: $versionId")
             } catch (e: Exception) {
-                onLog("[错误] 启动失败: ${e.message}")
+                runOnUiThread { onLog("[错误] 启动失败: ${e.message}") }
                 isRunning = false
             }
         }.start()
@@ -153,11 +146,11 @@ fun GameLaunchScreen(
     onStop: () -> Unit,
     onClose: () -> Unit
 ) {
-    var log by remember { mutableStateOf(mutableListOf<String>()) }
+    val log = remember { mutableStateListOf<String>() }
     var launched by remember { mutableStateOf(false) }
 
     fun addLog(msg: String) {
-        log = (log + msg).toMutableList()
+        log.add(msg)
     }
 
     Scaffold(
@@ -254,7 +247,8 @@ fun GameLaunchScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .padding(8.dp)
+                            .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         log.forEach { line ->
@@ -268,7 +262,7 @@ fun GameLaunchScreen(
                                     else -> Color.White.copy(alpha = 0.8f)
                                 },
                                 fontSize = 11.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace
                             )
                         }
                     }

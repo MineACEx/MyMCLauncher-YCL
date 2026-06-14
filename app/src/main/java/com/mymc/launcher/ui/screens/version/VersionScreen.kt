@@ -260,6 +260,7 @@ fun VersionScreen(
 ) {
     val selectedFilter by viewModel.selectedFilter.collectAsState()
     val versionIsolationEnabled by viewModel.versionIsolationEnabled.collectAsState()
+    val versionList by viewModel.versionList.collectAsState()
     val filteredVersions = viewModel.getFilteredVersions()
 
     Scaffold(

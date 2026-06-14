@@ -3,9 +3,11 @@ package com.mymc.launcher.ui.screens.settings
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,37 +36,109 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mymc.launcher.data.local.PreferencesManager
-import com.mymc.launcher.ui.theme.PresetThemeColors
+import com.mymc.launcher.service.background.BackgroundManager
 import com.mymc.launcher.service.theme.ThemeManager
 import com.mymc.launcher.ui.components.BottomNavBar
 import com.mymc.launcher.ui.components.FadeInContent
-import com.mymc.launcher.ui.components.scaleOnClick
+import com.mymc.launcher.ui.theme.PresetThemeColors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.max
+import kotlin.math.min
+
+// =============================================================================
+// HSV 颜色转换工具函数
+// =============================================================================
+
+/**
+ * 将 HSV 颜色转换为 Compose Color。
+ *
+ * @param hue        色相，范围 0..360
+ * @param saturation 饱和度，范围 0f..1f
+ * @param value      明度，范围 0f..1f
+ * @param alpha      透明度，范围 0f..1f
+ */
+private fun hsvToColor(hue: Float, saturation: Float, value: Float, alpha: Float = 1f): Color {
+    val h = hue / 60f
+    val i = h.toInt()
+    val f = h - i
+    val p = value * (1f - saturation)
+    val q = value * (1f - saturation * f)
+    val t = value * (1f - saturation * (1f - f))
+
+    val (r, g, b) = when (i % 6) {
+        0 -> Triple(value, t, p)
+        1 -> Triple(q, value, p)
+        2 -> Triple(p, value, t)
+        3 -> Triple(p, q, value)
+        4 -> Triple(t, p, value)
+        else -> Triple(value, p, q)
+    }
+
+    return Color(r, g, b, alpha)
+}
+
+/**
+ * 将 Compose Color 转换为 HSV 数组。
+ *
+ * @return FloatArray 包含 [hue(0..360), saturation(0..1), value(0..1)]
+ */
+private fun colorToHsv(color: Color): FloatArray {
+    val r = color.red
+    val g = color.green
+    val b = color.blue
+
+    val maxVal = max(r, max(g, b))
+    val minVal = min(r, min(g, b))
+    val delta = maxVal - minVal
+
+    val hue = when {
+        delta == 0f -> 0f
+        maxVal == r -> 60f * (((g - b) / delta) % 6f)
+        maxVal == g -> 60f * (((b - r) / delta) + 2f)
+        else -> 60f * (((r - g) / delta) + 4f)
+    }.let { if (it < 0f) it + 360f else it }
+
+    val saturation = if (maxVal == 0f) 0f else delta / maxVal
+    val value = maxVal
+
+    return floatArrayOf(hue, saturation, value)
+}
+
+// =============================================================================
+// SettingsViewModel
+// =============================================================================
 
 /**
  * 设置页面 ViewModel。
- * 管理深色模式、主题色、背景图片、版本隔离等设置状态。
+ * 管理深色模式、主题色、背景图片、版本隔离、字体粗细等设置状态。
  */
 class SettingsViewModel : ViewModel() {
 
-    private val preferencesManager = PreferencesManager.getInstance(
-        com.mymc.launcher.YCLApplication.instance
-    )
+    private val context = com.mymc.launcher.YCLApplication.instance
+    private val preferencesManager = PreferencesManager.getInstance(context)
 
     /** 深色模式开关 */
     private val _isDarkMode = MutableStateFlow(ThemeManager.isDarkMode.value ?: false)
@@ -89,6 +164,14 @@ class SettingsViewModel : ViewModel() {
     private val _customDpi = MutableStateFlow(PreferencesManager.DEFAULT_DPI)
     val customDpi: StateFlow<Int> = _customDpi.asStateFlow()
 
+    /** 字体粗细 */
+    private val _fontWeight = MutableStateFlow(400)
+    val fontWeight: StateFlow<Int> = _fontWeight.asStateFlow()
+
+    /** 颜色选择器弹窗 */
+    private val _showColorPicker = MutableStateFlow(false)
+    val showColorPicker: StateFlow<Boolean> = _showColorPicker.asStateFlow()
+
     init {
         // 从 DataStore 读取版本隔离状态
         viewModelScope.launch {
@@ -100,6 +183,12 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             preferencesManager.dpiFlow.collect { dpi ->
                 _customDpi.value = dpi
+            }
+        }
+        // 从 DataStore 读取字体粗细
+        viewModelScope.launch {
+            preferencesManager.fontWeightFlow.collect { weight ->
+                _fontWeight.value = weight
             }
         }
     }
@@ -114,16 +203,31 @@ class SettingsViewModel : ViewModel() {
         ThemeManager.setThemeColor(colorHex)
     }
 
+    /** 从自定义颜色选择器设置主题色 */
+    fun selectCustomColor(colorHex: String) {
+        _currentThemeColor.value = colorHex
+        ThemeManager.setThemeColor(colorHex)
+    }
+
     fun setBackgroundImage(uri: Uri?) {
         if (uri != null) {
-            _backgroundPath.value = uri.toString()
-            ThemeManager.setBackgroundPath(uri.toString())
+            viewModelScope.launch {
+                val file = BackgroundManager.getInstance().copyUriToInternal(
+                    context, uri, "custom_background.jpg"
+                )
+                if (file != null) {
+                    val path = file.absolutePath
+                    _backgroundPath.value = path
+                    ThemeManager.setBackgroundPath(path)
+                }
+            }
         }
     }
 
     fun resetBackgroundImage() {
         _backgroundPath.value = ""
         ThemeManager.setBackgroundPath("")
+        BackgroundManager.getInstance().clearAllBackgrounds(context)
     }
 
     fun toggleVersionIsolation(enabled: Boolean) {
@@ -139,11 +243,29 @@ class SettingsViewModel : ViewModel() {
             preferencesManager.setDpi(dpi)
         }
     }
+
+    fun setFontWeight(weight: Int) {
+        _fontWeight.value = weight
+        ThemeManager.setFontWeight(weight)
+    }
+
+    fun openColorPicker() {
+        _showColorPicker.value = true
+    }
+
+    fun closeColorPicker() {
+        _showColorPicker.value = false
+    }
 }
+
+// =============================================================================
+// SettingsScreen
+// =============================================================================
 
 /**
  * 设置页面 Composable。
- * 深色/亮色模式切换、主题色选择、背景图片、版本隔离、关于信息。
+ * 深色/亮色模式切换、主题色选择、自定义颜色、背景图片、
+ * 字体粗细、版本隔离、关于信息。
  *
  * @param onNavigate    全局导航回调
  * @param currentRoute  当前路由
@@ -153,7 +275,7 @@ class SettingsViewModel : ViewModel() {
 fun SettingsScreen(
     onNavigate: (String) -> Unit,
     currentRoute: String,
-    viewModel: SettingsViewModel = remember { SettingsViewModel() }
+    viewModel: SettingsViewModel = viewModel()
 ) {
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val currentThemeColor by viewModel.currentThemeColor.collectAsState()
@@ -161,12 +283,33 @@ fun SettingsScreen(
     val versionIsolationEnabled by viewModel.versionIsolationEnabled.collectAsState()
     val appVersion by viewModel.appVersion.collectAsState()
     val customDpi by viewModel.customDpi.collectAsState()
+    val fontWeight by viewModel.fontWeight.collectAsState()
+    val showColorPicker by viewModel.showColorPicker.collectAsState()
 
     // 图片选择器
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         viewModel.setBackgroundImage(uri)
+    }
+
+    // 自定义颜色选择器弹窗
+    if (showColorPicker) {
+        val initialColor = try {
+            Color(android.graphics.Color.parseColor(currentThemeColor))
+        } catch (_: Exception) {
+            Color(0xFF0D47A1)
+        }
+
+        HsvColorPickerDialog(
+            initialColor = initialColor,
+            onColorSelected = { color ->
+                val hex = String.format("#%08X", color.toArgb())
+                viewModel.selectCustomColor(hex)
+                viewModel.closeColorPicker()
+            },
+            onDismiss = { viewModel.closeColorPicker() }
+        )
     }
 
     Scaffold(
@@ -223,6 +366,75 @@ fun SettingsScreen(
                         onClick = { viewModel.selectThemeColor(colorHex) }
                     )
                 }
+                // 自定义颜色按钮
+                CustomColorButton(
+                    onClick = { viewModel.openColorPicker() }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+            // 字体粗细
+            Text(
+                text = "字体粗细",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val fontWeightLabel = when {
+                fontWeight <= 200 -> "Thin (200)"
+                fontWeight <= 300 -> "Light (${fontWeight})"
+                fontWeight <= 400 -> "Normal (${fontWeight})"
+                fontWeight <= 500 -> "Medium (${fontWeight})"
+                fontWeight <= 600 -> "SemiBold (${fontWeight})"
+                fontWeight <= 700 -> "Bold (${fontWeight})"
+                fontWeight <= 800 -> "ExtraBold (${fontWeight})"
+                else -> "Black (${fontWeight})"
+            }
+
+            Text(
+                text = fontWeightLabel,
+                fontSize = 14.sp,
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "200",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+                Slider(
+                    value = fontWeight.toFloat(),
+                    onValueChange = { viewModel.setFontWeight(it.toInt()) },
+                    valueRange = 200f..900f,
+                    steps = 13,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "900",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+
+            Button(
+                onClick = { viewModel.setFontWeight(400) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text("重置为默认 (400)")
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -368,6 +580,224 @@ fun SettingsScreen(
     }
 }
 
+// =============================================================================
+// HSV 颜色选择器弹窗
+// =============================================================================
+
+/**
+ * HSV 颜色选择器弹窗。
+ *
+ * 包含：
+ * - 饱和度/明度 2D 面板
+ * - 色相条（横向滑动选择色相）
+ * - 预览色块
+ * - 确认按钮
+ *
+ * @param initialColor    初始颜色
+ * @param onColorSelected 颜色确认回调
+ * @param onDismiss       弹窗关闭回调
+ */
+@Composable
+private fun HsvColorPickerDialog(
+    initialColor: Color,
+    onColorSelected: (Color) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val initialHsv = remember { colorToHsv(initialColor) }
+    var hue by remember { mutableFloatStateOf(initialHsv[0]) }
+    var saturation by remember { mutableFloatStateOf(initialHsv[1]) }
+    var value by remember { mutableFloatStateOf(initialHsv[2]) }
+
+    val currentColor = hsvToColor(hue, saturation, value)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(20.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "自定义颜色",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 饱和度/明度 2D 面板
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    // 背景：水平饱和度渐变 垂直明度渐变
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(hue) {
+                                detectTapGestures { offset ->
+                                    val w = size.width.toFloat()
+                                    val h = size.height.toFloat()
+                                    saturation = (offset.x / w).coerceIn(0f, 1f)
+                                    value = (1f - offset.y / h).coerceIn(0f, 1f)
+                                }
+                            }
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        for (y in 0 until h.toInt()) {
+                            val v = 1f - y / h
+                            val startColor = hsvToColor(hue, 0f, v)
+                            val endColor = hsvToColor(hue, 1f, v)
+                            drawLine(
+                                brush = Brush.horizontalGradient(
+                                    listOf(startColor, endColor)
+                                ),
+                                start = Offset(0f, y.toFloat()),
+                                end = Offset(w, y.toFloat()),
+                                strokeWidth = 1f
+                            )
+                        }
+
+                        // 当前选择指示器
+                        val indicatorX = saturation * w
+                        val indicatorY = (1f - value) * h
+                        drawCircle(
+                            color = Color.White,
+                            radius = 8f,
+                            center = Offset(indicatorX, indicatorY)
+                        )
+                        drawCircle(
+                            color = Color.Black,
+                            radius = 6f,
+                            center = Offset(indicatorX, indicatorY)
+                        )
+                        drawCircle(
+                            color = currentColor,
+                            radius = 5f,
+                            center = Offset(indicatorX, indicatorY)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 色相条
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures { offset ->
+                                    hue = (offset.x / size.width * 360f).coerceIn(0f, 360f)
+                                }
+                            }
+                    ) {
+                        val w = size.width
+                        val h = size.height
+                        // 绘制色相渐变
+                        for (x in 0 until w.toInt()) {
+                            val hueAtX = x / w * 360f
+                            drawLine(
+                                color = hsvToColor(hueAtX, 1f, 1f),
+                                start = Offset(x.toFloat(), 0f),
+                                end = Offset(x.toFloat(), h),
+                                strokeWidth = 1f
+                            )
+                        }
+
+                        // 色相指示器
+                        val indicatorX = hue / 360f * w
+                        drawCircle(
+                            color = Color.White,
+                            radius = 10f,
+                            center = Offset(indicatorX, h / 2f)
+                        )
+                        drawCircle(
+                            color = hsvToColor(hue, 1f, 1f),
+                            radius = 8f,
+                            center = Offset(indicatorX, h / 2f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 预览色块
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "预览:",
+                        fontSize = 14.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .border(2.dp, Color.Gray.copy(alpha = 0.5f), CircleShape)
+                            .background(currentColor)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = String.format("#%08X", currentColor.toArgb()),
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 确认按钮
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("取消")
+                    }
+                    Button(
+                        onClick = { onColorSelected(currentColor) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("确认")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Reusable Components
+// =============================================================================
+
 /**
  * 设置开关行组件。
  */
@@ -415,4 +845,28 @@ private fun ColorCircle(
             .background(color, CircleShape)
             .clickable { onClick() }
     )
+}
+
+/**
+ * 自定义颜色按钮组件。
+ * 显示在预设颜色圆圈后面，点击后打开 HSV 颜色选择器。
+ */
+@Composable
+private fun CustomColorButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape)
+            .background(Color.Transparent, CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "+",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.Gray
+        )
+    }
 }

@@ -82,18 +82,21 @@ class DownloadService : Service() {
      * @param progress 下载进度 0-100
      */
     private fun buildNotification(fileName: String, progress: Int): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = if (launchIntent != null) {
+            PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        } else null
 
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("正在下载")
             .setContentText(fileName)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
             .setProgress(100, progress, progress <= 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -168,18 +171,21 @@ class DownloadService : Service() {
      * 下载失败时更新通知并停止 Service。
      */
     private fun stopWithError(message: String) {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = if (launchIntent != null) {
+            PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        } else null
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("下载失败")
             .setContentText(message)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
             .setAutoCancel(true)
             .build()
 

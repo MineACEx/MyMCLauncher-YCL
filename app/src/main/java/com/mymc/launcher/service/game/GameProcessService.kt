@@ -99,18 +99,21 @@ class GameProcessService : Service() {
      * @param content 通知内容文本
      */
     private fun buildNotification(content: String): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = if (launchIntent != null) {
+            PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        } else null
 
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("YCL启动器 - 游戏运行中")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
@@ -231,18 +234,21 @@ class GameProcessService : Service() {
      * 显示游戏结束通知。
      */
     private fun showTerminatedNotification(content: String) {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            packageManager.getLaunchIntentForPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = if (launchIntent != null) {
+            PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        } else null
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("YCL启动器")
             .setContentText(content)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
             .setAutoCancel(true)
             .build()
 

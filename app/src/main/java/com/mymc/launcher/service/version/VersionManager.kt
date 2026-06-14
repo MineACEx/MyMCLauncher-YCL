@@ -236,7 +236,9 @@ class VersionManager private constructor(private val context: Context) {
                             targetFile = libFile
                         )
                     }
-                } catch (_: Exception) { }
+                } catch (e: Exception) {
+                    LogUtil.warn(TAG, "Library 下载失败: ${lib.name}, 原因: ${e.message}")
+                }
                 completedLibs++
                 val p = 0.22f + 0.30f * (completedLibs.toFloat() / totalLibraries.coerceAtLeast(1).toFloat())
                 onProgress(p)
@@ -324,7 +326,7 @@ class VersionManager private constructor(private val context: Context) {
                 val versionId = dir.name
                 val jsonFile = File(dir, "$versionId.json")
                 val jarFile = File(dir, "$versionId.jar")
-                if (jsonFile.exists() && jsonFile.exists()) {
+                if (jsonFile.exists() && jarFile.exists()) {
                     val meta = parseJsonFile(jsonFile)
                     val type = detectVersionType(meta, versionId)
                     GameVersion(
@@ -369,14 +371,14 @@ class VersionManager private constructor(private val context: Context) {
                 return@withContext false
             }
             val loaderMeta = gson.fromJson(loaderJsonStr, JsonObject::class.java)
-            val loaderObj = loaderMeta.getAsJsonArray("loader")?.firstOrNull()?.asJsonObject
+            val loaderObj = loaderMeta.get("loader")?.asJsonArray?.firstOrNull()?.asJsonObject
             val loaderVersion = loaderObj?.get("version")?.asString ?: return@withContext false.also {
                 LogUtil.error(TAG, "无法解析 Fabric 加载器版本")
             }
             onProgress(0.2f)
 
             // 2. 下载 intermediary mappings
-            val intermediaryObj = loaderMeta.getAsJsonArray("intermediary")
+            val intermediaryObj = loaderMeta.get("intermediary")?.asJsonArray
                 ?.firstOrNull()?.asJsonObject
             val intermediaryVersion = intermediaryObj?.get("version")?.asString
             onProgress(0.3f)
@@ -593,10 +595,10 @@ class VersionManager private constructor(private val context: Context) {
     }
 
     private suspend fun getVersionJsonUrl(version: String): String? {
-        try {
+        return try {
             val response = RetrofitClient.mojangApi.getVersionManifest()
             if (!response.isSuccessful || response.body() == null) return null
-            return response.body()!!.versions.find { it.id == version }?.url
+            response.body()!!.versions.find { it.id == version }?.url
         } catch (e: Exception) {
             LogUtil.error(TAG, "获取版本 JSON URL 失败: $version", e)
             null
